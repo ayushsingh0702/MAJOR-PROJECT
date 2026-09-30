@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Centralized Monitoring Dashboard - Women Safety">
+    <title>Women Safety Dashboard</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation Header -->
+        <header class="navbar">
+            <a href="../index.html" class="brand" id="brand-home-link">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                    </svg>
+                </div>
+                <div class="brand-name">Women<span>Safety</span></div>
+            </a>
+            <div class="nav-links">
+                <a href="../index.html" class="nav-link" id="nav-back-home">
+                    &larr; Back to Home
+                </a>
+            </div>
+        </header>
+
+        <!-- Dashboard Layout -->
+        <main class="dashboard-layout">
+            <!-- Header Bar -->
+            <div class="dashboard-header-bar">
+                <div class="dashboard-title-group">
+                    <h1 id="dashboard-heading">Women Safety Dashboard</h1>
+                    <p>Live remote monitoring and surveillance console</p>
+                </div>
+                <div class="dashboard-actions">
+                    <span class="badge badge-disconnected" id="server-status-badge">
+                        <span class="badge-dot"></span> Backend: Disconnected
+                    </span>
+                </div>
+            </div>
+
+            <!-- Camera Card: Camera 01 -->
+            <div class="glass-card camera-card" id="camera-card-01">
+                <div class="camera-card-header">
+                    <div class="camera-identity">
+                        <div class="camera-badge-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 7l-7 5 7 5V7z"></path>
+                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="camera-title" id="camera-label-01">Camera 01</h2>
+                            <span class="camera-meta">Primary Field Stream</span>
+                        </div>
+                    </div>
+                    <!-- Status Indicator -->
+                    <span class="badge badge-disconnected" id="camera-01-status">
+                        <span class="badge-dot"></span> Disconnected
+                    </span>
+                </div>
+
+                <!-- Large Area Reserved for Live Video -->
+                <div class="video-stream-area" id="video-stream-container-01">
+                    <div class="video-stream-placeholder" id="stream-placeholder-01">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                        <h3>Awaiting Live Video Stream</h3>
+                        <p>No active WebRTC stream received from Camera 01. Once the phone connects, live surveillance will render here.</p>
+                    </div>
+
+                    <!-- Future Remote Video Tag -->
+                    <video id="remote-video-feed-01" autoplay playsinline style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
+                </div>
+
+                <!-- Stream Info / Footer -->
+                <div class="stream-info-bar">
+                    <div class="stream-stats">
+                        <div class="stat-item"><span>Resolution:</span> <strong>--</strong></div>
+                        <div class="stat-item"><span>Latency:</span> <strong>-- ms</strong></div>
+                        <div class="stat-item"><span>Bitrate:</span> <strong>0 kbps</strong></div>
+                    </div>
+                    <div class="stream-tag">
+                        <span>Device: Unassigned</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>&copy; 2026 Women Safety System. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- Scripts (no functionality implemented yet) -->
+    <script src="../js/app.js"></script>
+    <script src="../js/websocket.js"></script>
+    <script src="../js/webrtc.js"></script>
+</body>
+</html>
