@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Phone Camera Live Capture Interface - Women Safety">
-    <title>Phone Camera - Women Safety</title>
+    <title>Women Safety</title>
     <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container phone-container">
         <!-- Navigation Header -->
         <header class="navbar">
             <a href="../index.html" class="brand" id="brand-home-link">
@@ -29,37 +29,56 @@
         <!-- Main Phone Stream Interface -->
         <main class="phone-layout">
             <div class="page-header">
-                <h1 class="page-title">Phone Camera</h1>
-                <p class="page-subtitle">Stream live video directly to the monitoring dashboard</p>
+                <h1 class="page-title">Women Safety</h1>
+                <p class="page-subtitle">Secure Camera</p>
             </div>
 
-            <div class="glass-card" id="camera-card-container">
-                <!-- Camera Preview Reserved Area -->
-                <div class="camera-preview-container" id="camera-preview-box">
-                    <div class="camera-status-overlay">
-                        <span class="badge badge-disconnected" id="camera-stream-badge">
-                            <span class="badge-dot"></span> Camera Inactive
-                        </span>
-                    </div>
-
-                    <!-- Placeholder / Future Video Tag -->
-                    <div class="camera-preview-placeholder" id="camera-placeholder">
-                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                            <circle cx="12" cy="13" r="4"></circle>
-                        </svg>
-                        <span>Camera preview will appear here</span>
-                    </div>
-
-                    <video id="camera-video-feed" playsinline autoplay muted style="display: none; width: 100%; height: 100%; object-fit: cover;"></video>
+            <div class="glass-card camera-card-wrapper" id="camera-card-container">
+                <!-- Camera Status Bar -->
+                <div class="camera-status-bar">
+                    <span class="camera-status-label">Camera Status:</span>
+                    <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
                 </div>
 
-                <!-- Controls -->
+                <!-- Large Camera Preview Area -->
+                <div class="camera-preview-container" id="camera-preview-box">
+                    <!-- Before the camera starts, display: "Camera is not started" -->
+                    <div class="camera-preview-placeholder" id="cameraPlaceholder">
+                        <div class="placeholder-icon-circle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                            </svg>
+                        </div>
+                        <span class="placeholder-text">Camera is not started</span>
+                        <span class="placeholder-hint">Click &quot;Start Camera&quot; below to allow permission and open feed</span>
+                    </div>
+
+                    <!-- Required Video Element -->
+                    <video
+                        id="cameraPreview"
+                        autoplay
+                        playsinline
+                        muted>
+                    </video>
+                </div>
+
+                <!-- Error Message Area -->
+                <div id="errorMessage" class="error-message-box" role="alert" style="display: none;"></div>
+
+                <!-- Action Buttons -->
                 <div class="camera-controls-grid">
-                    <button type="button" class="btn btn-primary" id="btn-start-camera">
+                    <button type="button" class="btn btn-primary btn-camera" id="startBtn">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
                         Start Camera
                     </button>
-                    <button type="button" class="btn btn-danger" id="btn-stop-camera">
+                    <button type="button" class="btn btn-danger btn-camera" id="stopBtn" disabled>
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+                        </svg>
                         Stop Camera
                     </button>
                 </div>
@@ -72,8 +91,7 @@
         </footer>
     </div>
 
-    <!-- Scripts (no functionality implemented yet) -->
-    <script src="../js/app.js"></script>
+    <!-- Scripts -->
     <script src="../js/camera.js"></script>
 </body>
 </html>
