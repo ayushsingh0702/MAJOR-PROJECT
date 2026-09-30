@@ -34,10 +34,15 @@
             </div>
 
             <div class="glass-card camera-card-wrapper" id="camera-card-container">
-                <!-- Camera Status Bar -->
+                <!-- Status Indicators Bar -->
                 <div class="camera-status-bar">
-                    <span class="camera-status-label">Camera Status:</span>
-                    <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
+                    <div class="status-labels">
+                        <span class="camera-status-label">Status:</span>
+                    </div>
+                    <div class="status-badges">
+                        <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
+                        <span id="webrtcStatus" class="badge status-waiting">WAITING</span>
+                    </div>
                 </div>
 
                 <!-- Large Camera Preview Area -->
@@ -52,7 +57,7 @@
                             </svg>
                         </div>
                         <span class="placeholder-text">Camera is not started</span>
-                        <span class="placeholder-hint">Click &quot;Start Camera&quot; below to allow permission and open feed</span>
+                        <span class="placeholder-hint">Click &quot;Start Camera&quot; below to allow permission and stream via WebRTC</span>
                     </div>
 
                     <!-- Required Video Element -->
@@ -82,6 +87,32 @@
                         Stop Camera
                     </button>
                 </div>
+
+                <!-- Collapsible Development Diagnostics -->
+                <details class="debug-panel" id="phone-debug-panel">
+                    <summary class="debug-panel-title">
+                        <span>Stream Diagnostics</span>
+                        <span class="debug-toggle-icon">▾</span>
+                    </summary>
+                    <div class="debug-grid">
+                        <div class="debug-item">
+                            <span class="debug-label">Camera:</span>
+                            <span class="debug-val" id="debugCamera">Not started</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">WebRTC:</span>
+                            <span class="debug-val" id="debugWebRTC">Connection: WAITING</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Network:</span>
+                            <span class="debug-val" id="debugICE">ICE: new</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Signaling:</span>
+                            <span class="debug-val" id="debugSignaling">Local Dev (BroadcastChannel)</span>
+                        </div>
+                    </div>
+                </details>
             </div>
         </main>
 
@@ -93,5 +124,6 @@
 
     <!-- Scripts -->
     <script src="../js/camera.js"></script>
+    <script src="../js/webrtc.js"></script>
 </body>
 </html>

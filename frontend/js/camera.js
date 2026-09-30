@@ -1,15 +1,15 @@
 /**
  * camera.js
  * 
- * Phase 1: Local Mobile Camera Access
+ * Phase 2: High-Quality Local Camera Access & Track Inspection
  * 
  * Handles:
- * - Requesting camera permission via navigator.mediaDevices.getUserMedia()
- * - Environment (rear) facing camera preference with desktop fallback
- * - Streaming video to <video id="cameraPreview">
- * - Starting and stopping media tracks cleanly
- * - Updating UI status ("● Camera Offline" <-> "● Camera Active")
- * - Handling permission, device not found, and general access errors
+ * - High-resolution camera constraints (ideal 1080p @ 30fps with automatic 720p fallback)
+ * - Rear facing camera preference (ideal: "environment")
+ * - Inspecting actual hardware stream settings via track.getSettings()
+ * - Logging actual width, height, frameRate, facingMode
+ * - Displaying actual selected resolution in development/debug UI
+ * - Coordinating with webrtc.js via custom events and public API
  */
 
 (function () {
@@ -23,9 +23,11 @@
         const cameraPlaceholder = document.getElementById('cameraPlaceholder') || document.getElementById('camera-placeholder');
         const cameraStatus = document.getElementById('cameraStatus') || document.getElementById('camera-stream-badge');
         const errorMessage = document.getElementById('errorMessage') || document.getElementById('error-message');
+        const debugCameraEl = document.getElementById('debugCamera');
 
         // State
         let currentStream = null;
+        let activeSettings = null;
 
         /**
          * Display an error message in the error area
@@ -48,7 +50,22 @@
         }
 
         /**
-         * Start camera stream
+         * Update the debug UI with active camera resolution and settings
+         */
+        function updateCameraDebugInfo(settings) {
+            if (!debugCameraEl) return;
+            if (!settings || !settings.width) {
+                debugCameraEl.textContent = 'Camera: Not started';
+                return;
+            }
+            const width = settings.width;
+            const height = settings.height;
+            const fps = Math.round(settings.frameRate || 30);
+            debugCameraEl.textContent = `Camera: ${width} × ${height} @ ${fps} FPS`;
+        }
+
+        /**
+         * Start high-quality camera stream
          */
         async function startCamera() {
             clearError();
@@ -67,10 +84,22 @@
                 return;
             }
 
-            // Camera constraints as specified
+            // High-quality camera configuration with ideal constraints for graceful adaptation
             const constraints = {
                 video: {
-                    facingMode: "environment"
+                    facingMode: {
+                        ideal: "environment"
+                    },
+                    width: {
+                        ideal: 1920
+                    },
+                    height: {
+                        ideal: 1080
+                    },
+                    frameRate: {
+                        ideal: 30,
+                        max: 30
+                    }
                 },
                 audio: false
             };
@@ -78,20 +107,32 @@
             try {
                 let stream;
                 try {
-                    // 1. Request camera permission & start camera
+                    // 1. Request camera permission & start camera with target constraints
                     stream = await navigator.mediaDevices.getUserMedia(constraints);
                 } catch (constraintErr) {
-                    // Fallback for desktop testing where environment camera is unavailable
+                    // Fallback for development/testing if browser/webcam strictly errors on ideal constraints
                     if (constraintErr.name === 'OverconstrainedError') {
-                        console.warn("Camera facingMode 'environment' not satisfied, falling back to default camera device:", constraintErr);
+                        console.warn("Camera ideal constraints overconstrained, falling back to standard video device:", constraintErr);
                         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     } else {
                         throw constraintErr;
                     }
                 }
 
-                // 2 & 3. Store the MediaStream
+                // 2. Store MediaStream
                 currentStream = stream;
+
+                // 3. Inspect stream settings
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    activeSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                    console.log("=== Active Camera Stream Acquired ===");
+                    console.log(`- Width:       ${activeSettings.width || 'Unknown'} px`);
+                    console.log(`- Height:      ${activeSettings.height || 'Unknown'} px`);
+                    console.log(`- FrameRate:   ${activeSettings.frameRate || 'Unknown'} FPS`);
+                    console.log(`- FacingMode:  ${activeSettings.facingMode || 'Unknown'}`);
+                    updateCameraDebugInfo(activeSettings);
+                }
 
                 // 4. Assign it to cameraPreview.srcObject
                 if (cameraPreview) {
@@ -100,11 +141,11 @@
                     try {
                         await cameraPreview.play();
                     } catch (playErr) {
-                        console.warn("Video play promise error (can be ignored if autoplay handled):", playErr);
+                        console.warn("Video play promise note:", playErr);
                     }
                 }
 
-                // 5. Hide "Camera is not started"
+                // 5. Hide "Camera is not started" placeholder
                 if (cameraPlaceholder) {
                     cameraPlaceholder.style.display = 'none';
                 }
@@ -124,15 +165,22 @@
                     stopBtn.disabled = false;
                 }
 
-                // Handle external stream interruption (e.g., camera disconnected)
-                stream.getTracks().forEach(track => {
-                    track.addEventListener('ended', () => {
-                        stopCamera();
-                    });
+                // Notify external modules (e.g. webrtc.js) that camera stream is live
+                window.dispatchEvent(new CustomEvent('womensafety:camera-started', {
+                    detail: {
+                        stream: stream,
+                        track: videoTrack,
+                        settings: activeSettings
+                    }
+                }));
+
+                // Handle external stream interruption
+                videoTrack.addEventListener('ended', () => {
+                    stopCamera();
                 });
 
             } catch (err) {
-                // Log technical errors to console
+                // Log technical error
                 console.error("Camera access error:", err);
 
                 // Handle specific errors as required
@@ -144,11 +192,14 @@
                     showError("Unable to access the camera.");
                 }
 
-                // Clean up any partial state
+                // Reset UI state
                 if (currentStream) {
                     currentStream.getTracks().forEach(t => t.stop());
                     currentStream = null;
                 }
+
+                activeSettings = null;
+                updateCameraDebugInfo(null);
 
                 if (cameraPreview) {
                     cameraPreview.srcObject = null;
@@ -188,6 +239,9 @@
                 currentStream = null;
             }
 
+            activeSettings = null;
+            updateCameraDebugInfo(null);
+
             // 2. Set the video srcObject to null
             if (cameraPreview) {
                 cameraPreview.srcObject = null;
@@ -215,6 +269,9 @@
             if (stopBtn) {
                 stopBtn.disabled = true;
             }
+
+            // Notify WebRTC module that camera stopped
+            window.dispatchEvent(new CustomEvent('womensafety:camera-stopped'));
         }
 
         // Attach listeners
@@ -232,6 +289,14 @@
                 currentStream.getTracks().forEach(track => track.stop());
             }
         });
+
+        // Expose public camera API
+        window.WomenSafetyCamera = {
+            startCamera: startCamera,
+            stopCamera: stopCamera,
+            getStream: () => currentStream,
+            getSettings: () => activeSettings
+        };
     }
 
     if (document.readyState === 'loading') {
