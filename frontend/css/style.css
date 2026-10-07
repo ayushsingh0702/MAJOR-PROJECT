@@ -874,8 +874,35 @@ body {
     margin-right: 6px;
 }
 
-.stat-item strong {
-    color: var(--text-primary);
+/* Stream Controls Bar */
+.dashboard-controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0 6px 0;
+    flex-wrap: wrap;
+}
+
+.dashboard-controls-bar .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+}
+
+.dashboard-controls-bar .btn svg {
+    flex-shrink: 0;
+}
+
+#phone-telemetry-bar {
+    margin-top: 4px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-sm);
 }
 
 /* Footer */

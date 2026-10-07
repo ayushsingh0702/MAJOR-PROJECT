@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Phone Camera Live Capture Interface - Women Safety">
-    <title>Women Safety</title>
+    <title>Live Camera - Women Safety</title>
     <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
@@ -29,8 +29,8 @@
         <!-- Main Phone Stream Interface -->
         <main class="phone-layout">
             <div class="page-header">
-                <h1 class="page-title">Women Safety</h1>
-                <p class="page-subtitle">Secure Camera</p>
+                <h1 class="page-title">LIVE CAMERA</h1>
+                <p class="page-subtitle">Mobile Camera Streaming Node</p>
             </div>
 
             <div class="glass-card camera-card-wrapper" id="camera-card-container">
@@ -38,10 +38,11 @@
                 <div class="camera-status-bar">
                     <div class="status-labels">
                         <span class="camera-status-label">Status:</span>
+                        <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
                     </div>
                     <div class="status-badges">
-                        <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
-                        <span id="webrtcStatus" class="badge status-waiting">WAITING</span>
+                        <span class="camera-status-label" style="font-size: 0.8rem; color: var(--text-muted);">Connection:</span>
+                        <span id="connectionStatus" class="badge status-waiting">Waiting</span>
                     </div>
                 </div>
 
@@ -69,6 +70,18 @@
                     </video>
                 </div>
 
+                <!-- Telemetry Metrics Bar -->
+                <div class="stream-info-bar" id="phone-telemetry-bar">
+                    <div class="stream-stats">
+                        <div class="stat-item"><span>Resolution:</span> <strong id="cameraResolutionDisplay">--</strong></div>
+                        <div class="stat-item"><span>FPS:</span> <strong id="cameraFpsDisplay">--</strong></div>
+                        <div class="stat-item"><span>Connection quality:</span> <strong id="cameraQualityDisplay">--</strong></div>
+                    </div>
+                    <div class="stream-tag">
+                        <span>Device: Phone 1</span>
+                    </div>
+                </div>
+
                 <!-- Error Message Area -->
                 <div id="errorMessage" class="error-message-box" role="alert" style="display: none;"></div>
 
@@ -88,10 +101,10 @@
                     </button>
                 </div>
 
-                <!-- Collapsible Development Diagnostics -->
+                <!-- Collapsible Diagnostics -->
                 <details class="debug-panel" id="phone-debug-panel">
                     <summary class="debug-panel-title">
-                        <span>Stream Diagnostics</span>
+                        <span>Stream Diagnostics &amp; Settings</span>
                         <span class="debug-toggle-icon">▾</span>
                     </summary>
                     <div class="debug-grid">
@@ -101,15 +114,15 @@
                         </div>
                         <div class="debug-item">
                             <span class="debug-label">WebRTC:</span>
-                            <span class="debug-val" id="debugWebRTC">Connection: WAITING</span>
+                            <span class="debug-val" id="debugWebRTC">Connection: Waiting</span>
                         </div>
                         <div class="debug-item">
-                            <span class="debug-label">Network:</span>
-                            <span class="debug-val" id="debugICE">ICE: new</span>
+                            <span class="debug-label">Network ICE:</span>
+                            <span class="debug-val" id="debugICE">new</span>
                         </div>
                         <div class="debug-item">
                             <span class="debug-label">Signaling:</span>
-                            <span class="debug-val" id="debugSignaling">Local Dev (BroadcastChannel)</span>
+                            <span class="debug-val" id="debugSignaling">Spring Boot WebSocket (/ws)</span>
                         </div>
                     </div>
                 </details>
@@ -123,6 +136,8 @@
     </div>
 
     <!-- Scripts -->
+    <script src="../js/config.js"></script>
+    <script src="../js/websocket.js"></script>
     <script src="../js/camera.js"></script>
     <script src="../js/webrtc.js"></script>
 </body>

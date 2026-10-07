@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Centralized Monitoring Dashboard - Women Safety">
-    <title>Women Safety Dashboard</title>
+    <title>Laptop Dashboard - Women Safety</title>
     <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
@@ -31,12 +31,12 @@
             <!-- Header Bar -->
             <div class="dashboard-header-bar">
                 <div class="dashboard-title-group">
-                    <h1 id="dashboard-heading">Women Safety Dashboard</h1>
+                    <h1 id="dashboard-heading">LIVE CAMERA FEED</h1>
                     <p>Live remote monitoring and surveillance console</p>
                 </div>
                 <div class="dashboard-actions">
                     <span class="badge badge-disconnected" id="server-status-badge">
-                        <span class="badge-dot"></span> WebRTC: Ready
+                        <span class="badge-dot"></span> Signaling: Connecting...
                     </span>
                 </div>
             </div>
@@ -55,13 +55,13 @@
                             </svg>
                         </div>
                         <div>
-                            <h2 class="camera-title" id="camera-label-01">Camera 01</h2>
-                            <span class="camera-meta">Primary Field Stream</span>
+                            <h2 class="camera-title" id="camera-label-01">Phone 1</h2>
+                            <span class="camera-meta">Primary Mobile Stream</span>
                         </div>
                     </div>
                     <!-- Status Indicator: Shows CONNECTED or WAITING FOR CAMERA -->
                     <span class="badge badge-disconnected" id="camera-01-status">
-                        <span class="badge-dot"></span> WAITING FOR CAMERA
+                        <span class="badge-dot"></span> WAITING FOR CAMERA...
                     </span>
                 </div>
 
@@ -73,28 +73,63 @@
                             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                             <line x1="1" y1="1" x2="23" y2="23"></line>
                         </svg>
-                        <h3>Awaiting Live Video Stream</h3>
-                        <p>Waiting for phone camera stream. Start camera on the phone page to initiate live WebRTC video.</p>
+                        <h3>Waiting for camera...</h3>
+                        <p>Waiting for phone camera stream. Open the Phone Camera on your mobile device and click Start Camera to begin live streaming.</p>
                     </div>
 
-                    <!-- Required Remote Video Tag -->
+                    <!-- Required Remote Video Tag (plays live phone camera stream) -->
                     <video
                         id="remoteVideo"
                         autoplay
                         playsinline
+                        muted
                         controls="false">
                     </video>
+                </div>
+
+                <!-- Live Stream Controls (Fullscreen, Mute, Disconnect, Reconnect) -->
+                <div class="dashboard-controls-bar" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-outline" id="btn-fullscreen" style="padding: 8px 16px; font-size: 0.85rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                        </svg>
+                        Fullscreen
+                    </button>
+                    <button type="button" class="btn btn-outline" id="btn-mute" style="padding: 8px 16px; font-size: 0.85rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <line x1="23" y1="9" x2="17" y2="15"></line>
+                            <line x1="17" y1="9" x2="23" y2="15"></line>
+                        </svg>
+                        Unmute
+                    </button>
+                    <button type="button" class="btn btn-outline" id="btn-reconnect" style="padding: 8px 16px; font-size: 0.85rem;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Reconnect
+                    </button>
+                    <button type="button" class="btn btn-outline" id="btn-disconnect" style="padding: 8px 16px; font-size: 0.85rem; color: var(--danger); border-color: rgba(239, 68, 68, 0.3);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="15" y1="9" x2="9" y2="15"></line>
+                            <line x1="9" y1="9" x2="15" y2="15"></line>
+                        </svg>
+                        Disconnect
+                    </button>
                 </div>
 
                 <!-- Stream Info / Footer -->
                 <div class="stream-info-bar">
                     <div class="stream-stats">
+                        <div class="stat-item"><span>Device:</span> <strong id="stat-device">Phone 1</strong></div>
                         <div class="stat-item"><span>Resolution:</span> <strong id="stat-resolution">--</strong></div>
-                        <div class="stat-item"><span>Status:</span> <strong id="dashboard-debug-webrtc">WAITING</strong></div>
-                        <div class="stat-item"><span>Network:</span> <strong id="dashboard-debug-ice">new</strong></div>
+                        <div class="stat-item"><span>Status:</span> <strong id="dashboard-debug-webrtc">Waiting</strong></div>
+                        <div class="stat-item"><span>Connection:</span> <strong id="dashboard-debug-conn">Ready</strong></div>
                     </div>
                     <div class="stream-tag">
-                        <span>Device: Phone Camera Node</span>
+                        <span>Signaling: Spring Boot WebSocket</span>
                     </div>
                 </div>
 
@@ -119,7 +154,7 @@
                         </div>
                         <div class="debug-item">
                             <span class="debug-label">Signaling:</span>
-                            <span class="debug-val">Local Dev (BroadcastChannel)</span>
+                            <span class="debug-val">Spring Boot WebSocket (/ws)</span>
                         </div>
                     </div>
                 </details>
@@ -133,8 +168,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="../js/app.js"></script>
+    <script src="../js/config.js"></script>
     <script src="../js/websocket.js"></script>
     <script src="../js/webrtc.js"></script>
+    <script src="../js/app.js"></script>
 </body>
 </html>

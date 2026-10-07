@@ -1,237 +1,227 @@
 /**
  * camera.js
  * 
- * Phase 2: High-Quality Local Camera Access & Track Inspection
- * 
- * Handles:
- * - High-resolution camera constraints (ideal 1080p @ 30fps with automatic 720p fallback)
- * - Rear facing camera preference (ideal: "environment")
- * - Inspecting actual hardware stream settings via track.getSettings()
- * - Logging actual width, height, frameRate, facingMode
- * - Displaying actual selected resolution in development/debug UI
- * - Coordinating with webrtc.js via custom events and public API
+ * Phone Camera Capture & Hardware Stream Management.
+ * - Handles camera permissions and error messaging
+ * - Requests rear/environment camera with 1080p @ 30fps and 720p fallback
+ * - Displays local camera preview
+ * - Tracks actual hardware resolution & FPS
+ * - Coordinates with webrtc.js for live WebRTC streaming
  */
 
 (function () {
     'use strict';
 
-    function initCamera() {
+    function initCameraModule() {
         // DOM Elements
         const startBtn = document.getElementById('startBtn') || document.getElementById('btn-start-camera');
         const stopBtn = document.getElementById('stopBtn') || document.getElementById('btn-stop-camera');
         const cameraPreview = document.getElementById('cameraPreview');
-        const cameraPlaceholder = document.getElementById('cameraPlaceholder') || document.getElementById('camera-placeholder');
-        const cameraStatus = document.getElementById('cameraStatus') || document.getElementById('camera-stream-badge');
-        const errorMessage = document.getElementById('errorMessage') || document.getElementById('error-message');
+        const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+        const cameraStatusEl = document.getElementById('cameraStatus');
+        const connectionStatusEl = document.getElementById('connectionStatus') || document.getElementById('webrtcStatus');
+        const resDisplayEl = document.getElementById('cameraResolutionDisplay');
+        const fpsDisplayEl = document.getElementById('cameraFpsDisplay');
+        const qualityDisplayEl = document.getElementById('cameraQualityDisplay');
+        const errorMessageEl = document.getElementById('errorMessage');
         const debugCameraEl = document.getElementById('debugCamera');
 
         // State
         let currentStream = null;
         let activeSettings = null;
 
-        /**
-         * Display an error message in the error area
-         */
+        function setCameraStatus(text, className) {
+            if (cameraStatusEl) {
+                cameraStatusEl.textContent = text;
+                cameraStatusEl.className = 'camera-status ' + (className || '');
+            }
+        }
+
+        function setConnectionStatus(text, badgeClass) {
+            if (connectionStatusEl) {
+                connectionStatusEl.textContent = text;
+                if (badgeClass) {
+                    connectionStatusEl.className = 'badge ' + badgeClass;
+                }
+            }
+        }
+
         function showError(message) {
-            if (errorMessage) {
-                errorMessage.textContent = message;
-                errorMessage.style.display = 'block';
+            if (errorMessageEl) {
+                errorMessageEl.textContent = message;
+                errorMessageEl.style.display = 'block';
             }
         }
 
-        /**
-         * Clear and hide the error message area
-         */
         function clearError() {
-            if (errorMessage) {
-                errorMessage.textContent = '';
-                errorMessage.style.display = 'none';
+            if (errorMessageEl) {
+                errorMessageEl.textContent = '';
+                errorMessageEl.style.display = 'none';
             }
         }
 
-        /**
-         * Update the debug UI with active camera resolution and settings
-         */
-        function updateCameraDebugInfo(settings) {
-            if (!debugCameraEl) return;
+        function updateStatsDisplay(settings) {
             if (!settings || !settings.width) {
-                debugCameraEl.textContent = 'Camera: Not started';
+                if (resDisplayEl) resDisplayEl.textContent = '--';
+                if (fpsDisplayEl) fpsDisplayEl.textContent = '--';
+                if (qualityDisplayEl) qualityDisplayEl.textContent = '--';
+                if (debugCameraEl) debugCameraEl.textContent = 'Not started';
                 return;
             }
+
             const width = settings.width;
             const height = settings.height;
             const fps = Math.round(settings.frameRate || 30);
-            debugCameraEl.textContent = `Camera: ${width} × ${height} @ ${fps} FPS`;
+
+            if (resDisplayEl) resDisplayEl.textContent = `${width} × ${height}`;
+            if (fpsDisplayEl) fpsDisplayEl.textContent = `${fps} FPS`;
+            if (qualityDisplayEl) {
+                qualityDisplayEl.textContent = (height >= 1080 ? 'Excellent' : (height >= 720 ? 'Good' : 'Standard'));
+            }
+            if (debugCameraEl) {
+                debugCameraEl.textContent = `${width} × ${height} @ ${fps} FPS`;
+            }
         }
 
         /**
-         * Start high-quality camera stream
+         * Acquire camera stream with 1080p -> 720p adaptive fallback
          */
-        async function startCamera() {
-            clearError();
-
-            if (startBtn) {
-                startBtn.disabled = true;
-            }
-
-            // Check if MediaDevices API is available
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                console.error("Camera API Error: navigator.mediaDevices.getUserMedia is not supported or not running in a secure context (HTTPS / localhost).");
-                showError("Unable to access the camera.");
-                if (startBtn) {
-                    startBtn.disabled = false;
-                }
-                return;
-            }
-
-            // High-quality camera configuration with ideal constraints for graceful adaptation
-            const constraints = {
+        async function acquireCameraStream() {
+            // Target constraints: 1080p @ 30 FPS rear camera
+            const primaryConstraints = {
                 video: {
-                    facingMode: {
-                        ideal: "environment"
-                    },
-                    width: {
-                        ideal: 1920
-                    },
-                    height: {
-                        ideal: 1080
-                    },
-                    frameRate: {
-                        ideal: 30,
-                        max: 30
-                    }
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30, max: 30 }
                 },
                 audio: false
             };
 
-            try {
-                let stream;
-                try {
-                    // 1. Request camera permission & start camera with target constraints
-                    stream = await navigator.mediaDevices.getUserMedia(constraints);
-                } catch (constraintErr) {
-                    // Fallback for development/testing if browser/webcam strictly errors on ideal constraints
-                    if (constraintErr.name === 'OverconstrainedError') {
-                        console.warn("Camera ideal constraints overconstrained, falling back to standard video device:", constraintErr);
-                        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    } else {
-                        throw constraintErr;
-                    }
-                }
+            // Fallback 1: 720p @ 30 FPS rear camera
+            const fallback720pConstraints = {
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30, max: 30 }
+                },
+                audio: false
+            };
 
-                // 2. Store MediaStream
+            // Fallback 2: Basic video
+            const standardConstraints = {
+                video: { facingMode: { ideal: "environment" } },
+                audio: false
+            };
+
+            try {
+                return await navigator.mediaDevices.getUserMedia(primaryConstraints);
+            } catch (err1) {
+                console.warn('[Camera] 1080p constraints could not be satisfied, attempting 720p fallback:', err1.name);
+                try {
+                    return await navigator.mediaDevices.getUserMedia(fallback720pConstraints);
+                } catch (err2) {
+                    console.warn('[Camera] 720p constraints failed, attempting generic video fallback:', err2.name);
+                    return await navigator.mediaDevices.getUserMedia(standardConstraints);
+                }
+            }
+        }
+
+        /**
+         * Start camera action
+         */
+        async function startCamera() {
+            clearError();
+
+            if (startBtn) startBtn.disabled = true;
+
+            // Check browser support
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError("Unable to access camera. WebRTC and MediaDevices APIs require a secure context (HTTPS / localhost).");
+                if (startBtn) startBtn.disabled = false;
+                setCameraStatus("● Camera Unavailable", "status-offline");
+                return;
+            }
+
+            setCameraStatus("Initializing Camera...", "status-offline");
+            setConnectionStatus("Camera Permission Required", "status-waiting");
+
+            try {
+                const stream = await acquireCameraStream();
                 currentStream = stream;
 
-                // 3. Inspect stream settings
+                // Inspect track settings
                 const videoTrack = stream.getVideoTracks()[0];
                 if (videoTrack) {
                     activeSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-                    console.log("=== Active Camera Stream Acquired ===");
-                    console.log(`- Width:       ${activeSettings.width || 'Unknown'} px`);
-                    console.log(`- Height:      ${activeSettings.height || 'Unknown'} px`);
-                    console.log(`- FrameRate:   ${activeSettings.frameRate || 'Unknown'} FPS`);
-                    console.log(`- FacingMode:  ${activeSettings.facingMode || 'Unknown'}`);
-                    updateCameraDebugInfo(activeSettings);
+                    console.log("[Camera] Stream acquired:", activeSettings);
+                    updateStatsDisplay(activeSettings);
+
+                    videoTrack.addEventListener('ended', () => {
+                        console.log("[Camera] Track ended by hardware/system");
+                        stopCamera();
+                    });
                 }
 
-                // 4. Assign it to cameraPreview.srcObject
+                // Show preview
                 if (cameraPreview) {
                     cameraPreview.srcObject = stream;
                     cameraPreview.style.display = 'block';
                     try {
                         await cameraPreview.play();
                     } catch (playErr) {
-                        console.warn("Video play promise note:", playErr);
+                        console.warn("[Camera] Autoplay promise:", playErr);
                     }
                 }
 
-                // 5. Hide "Camera is not started" placeholder
                 if (cameraPlaceholder) {
                     cameraPlaceholder.style.display = 'none';
                 }
 
-                // 6. Change status to: "● Camera Active"
-                if (cameraStatus) {
-                    cameraStatus.textContent = '● Camera Active';
-                    cameraStatus.classList.remove('status-offline');
-                    cameraStatus.classList.add('status-active');
-                }
+                setCameraStatus("● Camera Ready", "status-active");
+                setConnectionStatus("Connecting...", "status-connecting");
 
-                // 7 & 8. Disable Start Camera, Enable Stop Camera
-                if (startBtn) {
-                    startBtn.disabled = true;
-                }
-                if (stopBtn) {
-                    stopBtn.disabled = false;
-                }
+                if (startBtn) startBtn.disabled = true;
+                if (stopBtn) stopBtn.disabled = false;
 
-                // Notify external modules (e.g. webrtc.js) that camera stream is live
-                window.dispatchEvent(new CustomEvent('womensafety:camera-started', {
-                    detail: {
-                        stream: stream,
-                        track: videoTrack,
-                        settings: activeSettings
-                    }
-                }));
-
-                // Handle external stream interruption
-                videoTrack.addEventListener('ended', () => {
-                    stopCamera();
-                });
+                // Notify WebRTC subsystem to start WebRTC streaming over Spring Boot signaling
+                if (window.WomenSafetyWebRTC && window.WomenSafetyWebRTC.startPhoneStreaming) {
+                    window.WomenSafetyWebRTC.startPhoneStreaming(stream);
+                } else {
+                    window.dispatchEvent(new CustomEvent('womensafety:camera-started', {
+                        detail: { stream: stream, track: videoTrack, settings: activeSettings }
+                    }));
+                }
 
             } catch (err) {
-                // Log technical error
-                console.error("Camera access error:", err);
+                console.error("[Camera] Access error:", err);
 
-                // Handle specific errors as required
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    showError("Camera permission was denied.");
+                    showError("Camera permission is required to start streaming.");
+                    setCameraStatus("● Permission Denied", "status-offline");
+                    setConnectionStatus("Permission Denied", "badge-disconnected");
                 } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-                    showError("No camera was found.");
+                    showError("Unable to access camera: No camera device found.");
+                    setCameraStatus("● No Camera Found", "status-offline");
                 } else {
-                    showError("Unable to access the camera.");
+                    showError("Unable to access camera: " + (err.message || 'Unknown error'));
+                    setCameraStatus("● Camera Error", "status-offline");
                 }
 
-                // Reset UI state
-                if (currentStream) {
-                    currentStream.getTracks().forEach(t => t.stop());
-                    currentStream = null;
-                }
-
-                activeSettings = null;
-                updateCameraDebugInfo(null);
-
-                if (cameraPreview) {
-                    cameraPreview.srcObject = null;
-                    cameraPreview.style.display = 'none';
-                }
-
-                if (cameraPlaceholder) {
-                    cameraPlaceholder.style.display = 'flex';
-                }
-
-                if (cameraStatus) {
-                    cameraStatus.textContent = '● Camera Offline';
-                    cameraStatus.classList.remove('status-active');
-                    cameraStatus.classList.add('status-offline');
-                }
-
-                if (startBtn) {
-                    startBtn.disabled = false;
-                }
-                if (stopBtn) {
-                    stopBtn.disabled = true;
-                }
+                if (startBtn) startBtn.disabled = false;
+                if (stopBtn) stopBtn.disabled = true;
+                updateStatsDisplay(null);
             }
         }
 
         /**
-         * Stop camera stream
+         * Stop camera action
          */
         function stopCamera() {
             clearError();
 
-            // 1. Stop every MediaStream track
+            // 1. Stop all tracks
             if (currentStream) {
                 currentStream.getTracks().forEach(track => {
                     track.stop();
@@ -240,38 +230,33 @@
             }
 
             activeSettings = null;
-            updateCameraDebugInfo(null);
+            updateStatsDisplay(null);
 
-            // 2. Set the video srcObject to null
+            // 2. Clear video element
             if (cameraPreview) {
                 cameraPreview.srcObject = null;
                 cameraPreview.style.display = 'none';
             }
 
-            // 3. Show "Camera is not started"
+            // 3. Show placeholder
             if (cameraPlaceholder) {
                 cameraPlaceholder.style.display = 'flex';
             }
 
-            // 4. Change status to: "● Camera Offline"
-            if (cameraStatus) {
-                cameraStatus.textContent = '● Camera Offline';
-                cameraStatus.classList.remove('status-active');
-                cameraStatus.classList.add('status-offline');
-            }
+            // 4. Update status displays
+            setCameraStatus("● Camera Offline", "status-offline");
+            setConnectionStatus("Waiting", "status-waiting");
 
-            // 5. Enable Start Camera
-            if (startBtn) {
-                startBtn.disabled = false;
-            }
+            // 5. Update buttons
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = true;
 
-            // 6. Disable Stop Camera
-            if (stopBtn) {
-                stopBtn.disabled = true;
+            // 6. Tear down WebRTC session & notify signaling server
+            if (window.WomenSafetyWebRTC && window.WomenSafetyWebRTC.stopPhoneStreaming) {
+                window.WomenSafetyWebRTC.stopPhoneStreaming();
+            } else {
+                window.dispatchEvent(new CustomEvent('womensafety:camera-stopped'));
             }
-
-            // Notify WebRTC module that camera stopped
-            window.dispatchEvent(new CustomEvent('womensafety:camera-stopped'));
         }
 
         // Attach listeners
@@ -283,14 +268,13 @@
             stopBtn.addEventListener('click', stopCamera);
         }
 
-        // Clean up tracks on page unload
         window.addEventListener('beforeunload', () => {
             if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
+                currentStream.getTracks().forEach(t => t.stop());
             }
         });
 
-        // Expose public camera API
+        // Public API
         window.WomenSafetyCamera = {
             startCamera: startCamera,
             stopCamera: stopCamera,
@@ -300,8 +284,8 @@
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initCamera);
+        document.addEventListener('DOMContentLoaded', initCameraModule);
     } else {
-        initCamera();
+        initCameraModule();
     }
 })();

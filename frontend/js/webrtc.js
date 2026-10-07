@@ -1,142 +1,65 @@
 /**
  * webrtc.js
  * 
- * Phase 2: WebRTC Peer Connection & Streaming Architecture
- * 
- * Implements:
- * - RTCPeerConnection creation with STUN server configuration
- * - Modular SDP offer / answer negotiation functions
- * - ICE candidate gathering and handling (with race-condition queue)
- * - RTCRtpSender encoding quality parameters (bitrate / framerate)
- * - Adaptive quality / bandwidth adaptation
- * - Remote video track binding (peerConnection.ontrack)
- * - Connection and ICE state monitoring (WAITING, CONNECTING, CONNECTED, DISCONNECTED, FAILED)
- * - Development signaling adapter (BroadcastChannel / LocalStorage) for multi-tab testing
- * - Clear public interface ready for Spring Boot WebSocket integration in Phase 3
+ * WebRTC Peer Connection & Real-Time Media Streaming Engine.
+ * - Integrates with Spring Boot WebSocket signaling server
+ * - Handles SDP Offer / Answer exchange
+ * - Handles ICE Candidate discovery and candidate queuing
+ * - High-quality adaptive video encoding parameters
+ * - Remote video streaming for Laptop Dashboard
  */
 
 (function () {
     'use strict';
 
-    // STUN configuration for development
+    // Base WebRTC Configuration (STUN server list; ready for TURN additions)
     const RTC_CONFIGURATION = {
-        iceServers: [
+        iceServers: (window.WomenSafetyConfig && window.WomenSafetyConfig.getStunServers()) || [
             {
                 urls: "stun:stun.l.google.com:19302"
             }
         ]
     };
 
-    /**
-     * Modular Local Development Signaling Channel
-     * Allows seamless P2P negotiation across browser tabs without a backend server.
-     * In Phase 3, this adapter will be swapped with Spring Boot WebSocket signaling.
-     */
-    class DevSignalingChannel {
-        constructor(channelName = 'womensafety_dev_signaling') {
-            this.channelName = channelName;
-            this.broadcastChannel = null;
-            this.onMessageCallback = null;
-
-            if (typeof BroadcastChannel !== 'undefined') {
-                this.broadcastChannel = new BroadcastChannel(this.channelName);
-                this.broadcastChannel.onmessage = (event) => {
-                    if (this.onMessageCallback && event.data) {
-                        this.onMessageCallback(event.data);
-                    }
-                };
-            }
-
-            // Fallback via window storage events
-            window.addEventListener('storage', (event) => {
-                if (event.key === this.channelName && event.newValue) {
-                    try {
-                        const payload = JSON.parse(event.newValue);
-                        if (this.onMessageCallback) {
-                            this.onMessageCallback(payload);
-                        }
-                    } catch (e) {
-                        // ignore malformed storage payload
-                    }
-                }
-            });
-        }
-
-        send(message) {
-            if (this.broadcastChannel) {
-                try {
-                    this.broadcastChannel.postMessage(message);
-                } catch (err) {
-                    console.warn("BroadcastChannel postMessage error:", err);
-                }
-            }
-            try {
-                localStorage.setItem(this.channelName, JSON.stringify({
-                    ...message,
-                    _timestamp: Date.now(),
-                    _sender: Math.random().toString(36).substring(7)
-                }));
-            } catch (err) {
-                // Ignore storage quota/security errors
-            }
-        }
-
-        onMessage(callback) {
-            this.onMessageCallback = callback;
-        }
-
-        close() {
-            if (this.broadcastChannel) {
-                this.broadcastChannel.close();
-            }
-        }
-    }
-
-    // Active connection state
+    // State Variables
     let peerConnection = null;
-    let pendingIceCandidates = [];
-    let currentRole = null; // 'phone-sender' or 'laptop-receiver'
-    let signalingChannel = null;
+    let signalingClient = null;
     let localStream = null;
+    let remoteStream = null;
+    let currentRole = null; // 'PHONE' or 'DASHBOARD'
+    let pendingIceCandidates = [];
+    let activePhoneDeviceId = 'Phone 1';
+    let reconnectTimeout = null;
 
     /**
-     * Check if WebRTC is supported by the current browser
+     * Check WebRTC support
      */
     function isWebRTCSupported() {
         return !!(window.RTCPeerConnection && window.RTCSessionDescription && window.RTCIceCandidate);
     }
 
     /**
-     * Map WebRTC connection state to standardized status labels
+     * Normalize and map WebRTC connection states
      */
-    function normalizeConnectionState(state) {
+    function normalizeState(state) {
         switch (state) {
-            case 'new':
-            case 'connecting':
-                return 'CONNECTING';
-            case 'connected':
-                return 'CONNECTED';
-            case 'disconnected':
-                return 'DISCONNECTED';
-            case 'failed':
-                return 'FAILED';
-            case 'closed':
-            default:
-                return 'WAITING';
+            case 'connected': return 'Connected';
+            case 'connecting': return 'Connecting...';
+            case 'disconnected': return 'Connection Lost';
+            case 'failed': return 'Connection Failed';
+            case 'closed': return 'Disconnected';
+            default: return 'Waiting for camera...';
         }
     }
 
     /**
-     * Configure encoding parameters on RTCRtpSender for high quality & low latency
+     * Configure RTCRtpSender encoding parameters for low latency and high quality
      */
     async function configureSenderParameters(pc, videoTrack) {
         if (!pc || !videoTrack) return;
         try {
-            const sender = pc.getSenders().find(s => s.track && s.track.kind === "video");
-            if (!sender || !sender.getParameters || !sender.setParameters) {
-                console.warn("RTCRtpSender parameters modification is not supported by this browser.");
-                return;
-            }
+            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (!sender || !sender.getParameters || !sender.setParameters) return;
 
             const parameters = sender.getParameters();
             if (!parameters.encodings || parameters.encodings.length === 0) {
@@ -146,38 +69,28 @@
             const trackSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
             const height = trackSettings.height || 720;
 
-            // Target bitrate settings:
-            // ~4.5 Mbps for 1080p, ~2.5 Mbps for 720p, ~1.2 Mbps for lower resolutions
-            let targetBitrate = 2500000;
-            if (height >= 1080) {
-                targetBitrate = 4500000;
-            } else if (height < 720) {
-                targetBitrate = 1200000;
-            }
-
+            // Target bitrates: ~4.5 Mbps for 1080p, ~2.5 Mbps for 720p
+            const targetBitrate = height >= 1080 ? 4500000 : (height >= 720 ? 2500000 : 1200000);
             parameters.encodings[0].maxBitrate = targetBitrate;
             parameters.encodings[0].maxFramerate = 30;
 
-            // Prioritize framerate stability for security streaming
             if ('degradationPreference' in parameters) {
                 parameters.degradationPreference = 'maintain-framerate';
             }
 
             await sender.setParameters(parameters);
-            console.log(`[WebRTC] Video sender configured: maxBitrate=${(targetBitrate / 1000000).toFixed(1)} Mbps, maxFramerate=30 fps`);
+            console.log(`[WebRTC] Video sender configured: maxBitrate=${(targetBitrate / 1000000).toFixed(1)} Mbps @ 30 FPS`);
         } catch (err) {
-            console.warn("[WebRTC] Could not configure sender encoding parameters (non-critical):", err);
+            console.warn('[WebRTC] Note on encoding parameters (non-critical):', err);
         }
     }
 
     /**
-     * Create RTCPeerConnection instance with lifecycle and event handlers
+     * Create RTCPeerConnection instance
      */
-    function createPeerConnection(role = 'generic', onRemoteStream = null, onStateChange = null) {
+    function createPeerConnection(role) {
         if (!isWebRTCSupported()) {
-            const errorMsg = "WebRTC is not supported in this browser.";
-            console.error(errorMsg);
-            throw new Error(errorMsg);
+            throw new Error("Your browser does not support WebRTC APIs.");
         }
 
         if (peerConnection) {
@@ -187,308 +100,245 @@
         currentRole = role;
         pendingIceCandidates = [];
 
-        try {
-            peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
-            console.log(`[WebRTC] PeerConnection created for role: ${role}`);
-        } catch (err) {
-            console.error("[WebRTC] PeerConnection creation failed:", err);
-            throw err;
-        }
+        peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
+        console.log('[WebRTC] Peer connection created');
 
-        // ICE candidate generation
+        // ICE Candidate Gathering
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log("[WebRTC] Local ICE candidate generated:", event.candidate.candidate);
-                if (signalingChannel) {
-                    signalingChannel.send({
-                        type: 'ice-candidate',
-                        candidate: event.candidate,
-                        role: currentRole
-                    });
+                console.log('[WebRTC] ICE candidate generated');
+                if (signalingClient) {
+                    signalingClient.sendIceCandidate(event.candidate);
                 }
-            } else {
-                console.log("[WebRTC] ICE candidate gathering completed.");
             }
         };
 
-        // Connection state monitoring
+        // Connection State Monitoring
         peerConnection.onconnectionstatechange = () => {
-            const rawState = peerConnection.connectionState;
-            const normalizedState = normalizeConnectionState(rawState);
-            console.log(`[WebRTC] Connection state: ${rawState} (${normalizedState})`);
+            const state = peerConnection ? peerConnection.connectionState : 'closed';
+            console.log(`[WebRTC] Connection state: ${state}`);
 
-            if (onStateChange) {
-                onStateChange(normalizedState, rawState);
+            updateUIForConnectionState(state);
+
+            if (state === 'failed') {
+                console.warn('[WebRTC] Connection failed, attempting automatic reconnection in 2s...');
+                scheduleReconnection();
             }
-            updateUIConnectionState(normalizedState, rawState);
         };
 
-        // ICE connection state monitoring
         peerConnection.oniceconnectionstatechange = () => {
-            const iceState = peerConnection.iceConnectionState;
-            console.log(`[WebRTC] ICE connection state: ${iceState}`);
-
-            const debugIceEl = document.getElementById('debugICE') || document.getElementById('dashboard-debug-ice');
-            if (debugIceEl) {
-                debugIceEl.textContent = iceState;
-            }
-
-            if (iceState === 'failed') {
-                console.error("[WebRTC] ICE Connection failed. Check network or STUN availability.");
-                handleError("ICE connection failed. Ensure both devices can reach STUN or local network.");
+            const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
+            const debugIce = document.getElementById('debugICE') || document.getElementById('dashboard-debug-ice') || document.getElementById('dashboard-debug-ice-val');
+            if (debugIce) {
+                debugIce.textContent = iceState;
             }
         };
 
-        // Remote track arrival (primarily for laptop dashboard receiver)
+        // Remote Track Arrival (Laptop Dashboard)
         peerConnection.ontrack = (event) => {
-            console.log("[WebRTC] Remote track received:", event.track.kind, event.streams);
-            if (onRemoteStream) {
-                onRemoteStream(event.streams[0], event.track);
-            }
-            handleRemoteTrackReceived(event);
+            console.log('[WebRTC] Remote stream received');
+            remoteStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+            handleRemoteStreamReceived(remoteStream);
         };
 
         return peerConnection;
     }
 
     /**
-     * Create an SDP offer and set as local description
+     * Flush queued ICE candidates once remote description is set
      */
-    async function createOffer(options = {}) {
-        if (!peerConnection) {
-            throw new Error("PeerConnection is not initialized. Call createPeerConnection first.");
-        }
-        try {
-            const offer = await peerConnection.createOffer(options);
-            await peerConnection.setLocalDescription(offer);
-            console.log("[WebRTC] Local SDP Offer created and applied.");
-            return offer;
-        } catch (err) {
-            console.error("[WebRTC] Failed to create SDP offer:", err);
-            handleError("Failed to create WebRTC offer.");
-            throw err;
+    async function flushPendingIceCandidates() {
+        if (!peerConnection || !peerConnection.remoteDescription) return;
+
+        while (pendingIceCandidates.length > 0) {
+            const candidate = pendingIceCandidates.shift();
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.warn('[WebRTC] Error adding queued ICE candidate:', err);
+            }
         }
     }
 
     /**
-     * Create an SDP answer and set as local description
+     * Safely add ICE Candidate, queueing if remote description not yet set
      */
-    async function createAnswer(options = {}) {
-        if (!peerConnection) {
-            throw new Error("PeerConnection is not initialized. Call createPeerConnection first.");
-        }
-        try {
-            const answer = await peerConnection.createAnswer(options);
-            await peerConnection.setLocalDescription(answer);
-            console.log("[WebRTC] Local SDP Answer created and applied.");
-            return answer;
-        } catch (err) {
-            console.error("[WebRTC] Failed to create SDP answer:", err);
-            handleError("Failed to create WebRTC answer.");
-            throw err;
-        }
-    }
-
-    /**
-     * Handle incoming remote SDP offer
-     */
-    async function handleOffer(offer) {
-        if (!peerConnection) {
-            createPeerConnection('laptop-receiver');
-        }
-        try {
-            console.log("[WebRTC] Applying remote SDP Offer...");
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            console.log("[WebRTC] Remote description set successfully.");
-
-            // Drain queued ICE candidates received prior to remote description
-            await flushPendingIceCandidates();
-        } catch (err) {
-            console.error("[WebRTC] Error handling remote offer:", err);
-            handleError("Unable to process remote connection offer.");
-            throw err;
-        }
-    }
-
-    /**
-     * Handle incoming remote SDP answer
-     */
-    async function handleAnswer(answer) {
-        if (!peerConnection) {
-            console.warn("[WebRTC] Cannot handle answer: PeerConnection not initialized.");
-            return;
-        }
-        try {
-            console.log("[WebRTC] Applying remote SDP Answer...");
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            console.log("[WebRTC] Remote answer set successfully.");
-
-            // Drain queued ICE candidates
-            await flushPendingIceCandidates();
-        } catch (err) {
-            console.error("[WebRTC] Error handling remote answer:", err);
-            handleError("Unable to establish WebRTC connection with remote peer.");
-            throw err;
-        }
-    }
-
-    /**
-     * Handle incoming remote ICE candidate (with queuing for race conditions)
-     */
-    async function handleIceCandidate(candidateInit) {
+    async function addIceCandidateSafely(candidateInit) {
         if (!candidateInit) return;
 
-        // If remote description is not set yet, queue candidate
         if (!peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
-            console.log("[WebRTC] Queueing ICE candidate until remote description is set.");
             pendingIceCandidates.push(candidateInit);
             return;
         }
 
         try {
             await peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
-            console.log("[WebRTC] Remote ICE candidate added successfully.");
         } catch (err) {
-            console.warn("[WebRTC] Failed to add remote ICE candidate:", err);
+            console.warn('[WebRTC] Failed to add ICE candidate:', err);
         }
     }
 
     /**
-     * Flush all queued ICE candidates
+     * Update UI elements across Phone and Dashboard pages
      */
-    async function flushPendingIceCandidates() {
-        if (!peerConnection || !peerConnection.remoteDescription) return;
-        while (pendingIceCandidates.length > 0) {
-            const candidate = pendingIceCandidates.shift();
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                console.log("[WebRTC] Flushed queued ICE candidate.");
-            } catch (err) {
-                console.warn("[WebRTC] Error adding queued ICE candidate:", err);
+    function updateUIForConnectionState(state) {
+        // --- Phone Page Updates ---
+        const connectionStatusEl = document.getElementById('connectionStatus') || document.getElementById('webrtcStatus');
+        const debugWebRTCEl = document.getElementById('debugWebRTC');
+
+        if (connectionStatusEl) {
+            if (state === 'connected') {
+                connectionStatusEl.textContent = '● Connected to Dashboard';
+                connectionStatusEl.className = 'badge status-connected';
+            } else if (state === 'connecting') {
+                connectionStatusEl.textContent = 'Connecting...';
+                connectionStatusEl.className = 'badge status-connecting';
+            } else if (state === 'failed' || state === 'disconnected') {
+                connectionStatusEl.textContent = 'Connection Lost';
+                connectionStatusEl.className = 'badge status-waiting';
+            } else {
+                connectionStatusEl.textContent = normalizeState(state);
             }
         }
+
+        if (debugWebRTCEl) {
+            debugWebRTCEl.textContent = `Connection: ${normalizeState(state)}`;
+        }
+
+        // --- Dashboard Page Updates ---
+        const dashboardStatus = document.getElementById('camera-01-status');
+        const dashboardDebugState = document.getElementById('dashboard-debug-webrtc');
+        const dashboardDebugVal = document.getElementById('dashboard-debug-webrtc-val');
+
+        if (dashboardStatus) {
+            if (state === 'connected') {
+                dashboardStatus.innerHTML = '<span class="badge-dot"></span> CONNECTED';
+                dashboardStatus.className = 'badge badge-connected';
+            } else if (state === 'connecting') {
+                dashboardStatus.innerHTML = '<span class="badge-dot"></span> CONNECTING...';
+                dashboardStatus.className = 'badge badge-warning';
+            } else if (state === 'disconnected') {
+                dashboardStatus.innerHTML = '<span class="badge-dot"></span> PHONE DISCONNECTED';
+                dashboardStatus.className = 'badge badge-disconnected';
+            } else {
+                dashboardStatus.innerHTML = '<span class="badge-dot"></span> WAITING FOR CAMERA';
+                dashboardStatus.className = 'badge badge-disconnected';
+            }
+        }
+
+        if (dashboardDebugState) dashboardDebugState.textContent = normalizeState(state);
+        if (dashboardDebugVal) dashboardDebugVal.textContent = state;
+
+        const dashboardConn = document.getElementById('dashboard-debug-conn');
+        if (dashboardConn) {
+            dashboardConn.textContent = (state === 'connected') ? 'Connected' : normalizeState(state);
+        }
+        const statDevice = document.getElementById('stat-device');
+        if (statDevice) {
+            statDevice.textContent = activePhoneDeviceId || 'Phone 1';
+        }
     }
 
     /**
-     * Close and cleanly tear down PeerConnection
+     * Bind remote stream to Dashboard UI
+     */
+    function handleRemoteStreamReceived(stream) {
+        const remoteVideo = document.getElementById('remoteVideo');
+        const placeholder = document.getElementById('stream-placeholder-01');
+        const deviceTag = document.getElementById('camera-label-01') || document.getElementById('dashboardDeviceTag');
+        const resStatEl = document.getElementById('stat-resolution');
+        const debugStreamEl = document.getElementById('dashboard-debug-stream');
+
+        if (remoteVideo) {
+            remoteVideo.srcObject = stream;
+            remoteVideo.style.display = 'block';
+
+            remoteVideo.play().catch(e => console.warn('[WebRTC] Remote play promise:', e));
+
+            remoteVideo.onloadedmetadata = () => {
+                const w = remoteVideo.videoWidth;
+                const h = remoteVideo.videoHeight;
+                console.log(`[WebRTC] Remote video resolution: ${w} × ${h}`);
+                if (resStatEl) resStatEl.textContent = `${w} × ${h}`;
+                if (debugStreamEl) debugStreamEl.textContent = `${w} × ${h}`;
+            };
+        }
+
+        if (placeholder) {
+            placeholder.style.display = 'none';
+        }
+
+        if (deviceTag) {
+            deviceTag.textContent = activePhoneDeviceId || 'Phone 1';
+        }
+
+        updateUIForConnectionState('connected');
+    }
+
+    /**
+     * Reset dashboard UI back to "Waiting for phone camera..."
+     */
+    function resetDashboardUI(reason = 'Waiting for phone camera...') {
+        const remoteVideo = document.getElementById('remoteVideo');
+        const placeholder = document.getElementById('stream-placeholder-01');
+        const resStatEl = document.getElementById('stat-resolution');
+        const dashboardStatus = document.getElementById('camera-01-status');
+
+        if (remoteVideo) {
+            remoteVideo.srcObject = null;
+            remoteVideo.style.display = 'none';
+        }
+
+        if (placeholder) {
+            placeholder.style.display = 'flex';
+            const hint = placeholder.querySelector('p');
+            if (hint) hint.textContent = reason;
+        }
+
+        if (resStatEl) resStatEl.textContent = '--';
+
+        if (dashboardStatus) {
+            dashboardStatus.innerHTML = `<span class="badge-dot"></span> ${reason.toUpperCase()}`;
+            dashboardStatus.className = 'badge badge-disconnected';
+        }
+    }
+
+    /**
+     * Automatic reconnection attempt
+     */
+    function scheduleReconnection() {
+        if (reconnectTimeout) return;
+        reconnectTimeout = setTimeout(async () => {
+            reconnectTimeout = null;
+            if (currentRole === 'PHONE' && localStream) {
+                console.log('[WebRTC] Re-initiating phone WebRTC offer...');
+                startPhoneStreaming(localStream);
+            } else if (currentRole === 'DASHBOARD') {
+                if (signalingClient) {
+                    signalingClient.sendRaw({
+                        type: 'REQUEST_OFFER',
+                        sessionId: signalingClient.sessionId,
+                        role: 'DASHBOARD',
+                        deviceId: signalingClient.deviceId
+                    });
+                }
+            }
+        }, 2000);
+    }
+
+    /**
+     * Close PeerConnection
      */
     function closePeerConnection() {
         if (peerConnection) {
             peerConnection.ontrack = null;
             peerConnection.onicecandidate = null;
             peerConnection.onconnectionstatechange = null;
-            peerConnection.oniceconnectionstatechange = null;
             peerConnection.close();
             peerConnection = null;
-            console.log("[WebRTC] PeerConnection closed.");
+            console.log('[WebRTC] Peer connection closed');
         }
         pendingIceCandidates = [];
-        updateUIConnectionState('WAITING', 'closed');
-    }
-
-    /**
-     * Display readable error message on current page
-     */
-    function handleError(message) {
-        const errorEl = document.getElementById('errorMessage') || document.getElementById('dashboardErrorMessage');
-        if (errorEl) {
-            errorEl.textContent = message;
-            errorEl.style.display = 'block';
-        }
-    }
-
-    /**
-     * Clear error message on current page
-     */
-    function clearError() {
-        const errorEl = document.getElementById('errorMessage') || document.getElementById('dashboardErrorMessage');
-        if (errorEl) {
-            errorEl.textContent = '';
-            errorEl.style.display = 'none';
-        }
-    }
-
-    /**
-     * Update connection badges and debug displays
-     */
-    function updateUIConnectionState(normalizedState, rawState) {
-        // Phone page elements
-        const webrtcStatusEl = document.getElementById('webrtcStatus');
-        const debugWebRTCEl = document.getElementById('debugWebRTC');
-        if (webrtcStatusEl) {
-            webrtcStatusEl.textContent = normalizedState;
-            webrtcStatusEl.className = `badge status-${normalizedState.toLowerCase()}`;
-        }
-        if (debugWebRTCEl) {
-            debugWebRTCEl.textContent = `Connection: ${normalizedState}`;
-        }
-
-        // Laptop dashboard elements
-        const dashboardStatusBadge = document.getElementById('camera-01-status') || document.getElementById('dashboardCameraStatus');
-        const dashboardDebugState = document.getElementById('dashboard-debug-webrtc');
-        if (dashboardStatusBadge) {
-            if (normalizedState === 'CONNECTED') {
-                dashboardStatusBadge.innerHTML = '<span class="badge-dot"></span> CONNECTED';
-                dashboardStatusBadge.className = 'badge badge-connected';
-            } else if (normalizedState === 'CONNECTING') {
-                dashboardStatusBadge.innerHTML = '<span class="badge-dot"></span> CONNECTING';
-                dashboardStatusBadge.className = 'badge badge-warning';
-            } else if (normalizedState === 'FAILED') {
-                dashboardStatusBadge.innerHTML = '<span class="badge-dot"></span> FAILED';
-                dashboardStatusBadge.className = 'badge badge-disconnected';
-            } else if (normalizedState === 'DISCONNECTED') {
-                dashboardStatusBadge.innerHTML = '<span class="badge-dot"></span> DISCONNECTED';
-                dashboardStatusBadge.className = 'badge badge-disconnected';
-            } else {
-                dashboardStatusBadge.innerHTML = '<span class="badge-dot"></span> WAITING FOR CAMERA';
-                dashboardStatusBadge.className = 'badge badge-disconnected';
-            }
-        }
-        if (dashboardDebugState) {
-            dashboardDebugState.textContent = `Connection: ${normalizedState}`;
-        }
-    }
-
-    /**
-     * Handle incoming remote track on dashboard
-     */
-    function handleRemoteTrackReceived(event) {
-        const remoteVideo = document.getElementById('remoteVideo') || document.getElementById('remote-video-feed-01');
-        const placeholder = document.getElementById('stream-placeholder-01') || document.getElementById('remotePlaceholder');
-
-        if (!remoteVideo) return;
-
-        const incomingStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
-        remoteVideo.srcObject = incomingStream;
-        remoteVideo.style.display = 'block';
-
-        if (placeholder) {
-            placeholder.style.display = 'none';
-        }
-
-        try {
-            remoteVideo.play().catch(e => console.log("[WebRTC] Autoplay note:", e));
-        } catch (e) {
-            console.log("[WebRTC] Video play error:", e);
-        }
-
-        // Inspect remote resolution when stream metadata is available
-        remoteVideo.onloadedmetadata = () => {
-            const width = remoteVideo.videoWidth;
-            const height = remoteVideo.videoHeight;
-            console.log(`[WebRTC] Remote video rendering: ${width} × ${height}`);
-
-            const resStatEl = document.getElementById('stat-resolution');
-            if (resStatEl) {
-                resStatEl.textContent = `${width} × ${height}`;
-            }
-            const debugStreamEl = document.getElementById('dashboard-debug-stream');
-            if (debugStreamEl) {
-                debugStreamEl.textContent = `Stream: ${width} × ${height}`;
-            }
-        };
-
-        updateUIConnectionState('CONNECTED', 'connected');
     }
 
     // =========================================================================
@@ -496,50 +346,101 @@
     // =========================================================================
 
     async function startPhoneStreaming(stream) {
-        clearError();
         localStream = stream;
+        currentRole = 'PHONE';
+
+        const sessionId = window.WomenSafetyConfig.getDefaultSessionId();
+        const deviceId = 'phone-1';
+
+        // 1. Initialize Signaling Client if not yet connected
+        if (!signalingClient) {
+            signalingClient = new window.SignalingClient({
+                role: 'PHONE',
+                sessionId: sessionId,
+                deviceId: deviceId
+            });
+
+            signalingClient.onStatusChange = (status) => {
+                const connEl = document.getElementById('connectionStatus') || document.getElementById('webrtcStatus');
+                if (connEl && (!peerConnection || peerConnection.connectionState !== 'connected')) {
+                    connEl.textContent = status;
+                }
+            };
+
+            signalingClient.onAnswer = async (answer) => {
+                console.log('[WebSocket] Answer received');
+                if (peerConnection) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        await flushPendingIceCandidates();
+                        console.log('[WebRTC] Remote answer applied successfully');
+                    } catch (err) {
+                        console.error('[WebRTC] Error setting remote description for answer:', err);
+                    }
+                }
+            };
+
+            signalingClient.onIceCandidate = async (candidate) => {
+                await addIceCandidateSafely(candidate);
+            };
+
+            signalingClient.onRequestOffer = async () => {
+                console.log('[WebRTC] Dashboard requested fresh offer, re-offering...');
+                if (localStream) {
+                    initiatePhoneOffer();
+                }
+            };
+
+            signalingClient.onPeerConnected = (info) => {
+                console.log('[WebRTC] Dashboard peer connected:', info);
+                // When a dashboard connects, send a fresh offer immediately
+                if (localStream) {
+                    initiatePhoneOffer();
+                }
+            };
+
+            signalingClient.connect();
+        }
+
+        // 2. Setup PeerConnection & tracks
+        await initiatePhoneOffer();
+    }
+
+    async function initiatePhoneOffer() {
+        if (!localStream) return;
 
         try {
-            // 1. Create PeerConnection for Phone Sender
-            createPeerConnection('phone-sender');
+            createPeerConnection('PHONE');
 
-            // 2. Add camera video track
-            const videoTrack = stream.getVideoTracks()[0];
+            // Add video tracks
+            const videoTrack = localStream.getVideoTracks()[0];
             if (videoTrack) {
-                peerConnection.addTrack(videoTrack, stream);
-                console.log("[WebRTC] Added camera video track to PeerConnection.");
-
-                // 3. Configure bitrate / framerate quality parameters
+                peerConnection.addTrack(videoTrack, localStream);
                 await configureSenderParameters(peerConnection, videoTrack);
-            } else {
-                throw new Error("No video track found in camera stream.");
             }
 
-            // 4. Create and dispatch SDP Offer
-            const offer = await createOffer();
-            console.log("[WebRTC] Dispatching offer via development signaling channel...");
-            if (signalingChannel) {
-                signalingChannel.send({
-                    type: 'offer',
-                    offer: offer,
-                    role: 'phone-sender'
-                });
-            }
+            // Create Offer
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Send offer via signaling server
+            signalingClient.sendOffer(offer);
+
         } catch (err) {
-            console.error("[WebRTC] Failed to initialize phone streaming:", err);
-            handleError("Unable to initialize WebRTC streaming: " + err.message);
+            console.error('[WebRTC] Failed to initiate phone offer:', err);
         }
     }
 
     function stopPhoneStreaming() {
-        if (signalingChannel) {
-            signalingChannel.send({
-                type: 'stream-stopped',
-                role: 'phone-sender'
-            });
+        if (signalingClient) {
+            signalingClient.sendStreamStopped();
+            signalingClient.disconnect();
+            signalingClient = null;
         }
+
         closePeerConnection();
         localStream = null;
+        updateUIForConnectionState('closed');
     }
 
     // =========================================================================
@@ -547,154 +448,158 @@
     // =========================================================================
 
     function initDashboardReceiver() {
-        const remoteVideo = document.getElementById('remoteVideo') || document.getElementById('remote-video-feed-01');
-        if (!remoteVideo) return;
+        currentRole = 'DASHBOARD';
+        const sessionId = window.WomenSafetyConfig.getDefaultSessionId();
+        const deviceId = 'dashboard-1';
 
-        console.log("[WebRTC] Initializing Laptop Dashboard WebRTC Receiver...");
-        updateUIConnectionState('WAITING', 'waiting');
+        resetDashboardUI('Waiting for phone camera...');
 
-        // Create PeerConnection ready for incoming offer
-        createPeerConnection('laptop-receiver', (stream) => {
-            remoteVideo.srcObject = stream;
-        });
+        if (!signalingClient) {
+            signalingClient = new window.SignalingClient({
+                role: 'DASHBOARD',
+                sessionId: sessionId,
+                deviceId: deviceId
+            });
 
-        // Broadcast presence so phone can re-send offer if it was already streaming
-        if (signalingChannel) {
-            signalingChannel.send({
-                type: 'request-offer',
-                role: 'laptop-receiver'
+            signalingClient.onStatusChange = (status) => {
+                const sBadge = document.getElementById('server-status-badge');
+                if (sBadge) {
+                    sBadge.innerHTML = `<span class="badge-dot"></span> Signaling: ${status}`;
+                }
+            };
+
+            signalingClient.onOffer = async (offer, fromDeviceId) => {
+                console.log(`[WebRTC] Received offer from ${fromDeviceId}`);
+                activePhoneDeviceId = fromDeviceId || 'Phone 1';
+
+                try {
+                    updateUIForConnectionState('connecting');
+
+                    createPeerConnection('DASHBOARD');
+
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                    await flushPendingIceCandidates();
+
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+
+                    signalingClient.sendAnswer(answer, fromDeviceId);
+
+                } catch (err) {
+                    console.error('[WebRTC] Error processing offer on dashboard:', err);
+                    resetDashboardUI('Error establishing WebRTC connection.');
+                }
+            };
+
+            signalingClient.onIceCandidate = async (candidate) => {
+                await addIceCandidateSafely(candidate);
+            };
+
+            signalingClient.onPeerDisconnected = (info) => {
+                console.log('[WebRTC] Phone peer disconnected:', info);
+                resetDashboardUI('Phone disconnected.');
+                closePeerConnection();
+            };
+
+            signalingClient.connect();
+        }
+
+        // Setup dashboard UI controls
+        setupDashboardControls();
+    }
+
+    /**
+     * Dashboard interactive controls (Fullscreen, Mute, Disconnect, Reconnect)
+     */
+    function setupDashboardControls() {
+        const fullscreenBtn = document.getElementById('btn-fullscreen');
+        const muteBtn = document.getElementById('btn-mute');
+        const disconnectBtn = document.getElementById('btn-disconnect');
+        const reconnectBtn = document.getElementById('btn-reconnect');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const streamContainer = document.getElementById('video-stream-container-01');
+
+        if (fullscreenBtn && streamContainer) {
+            fullscreenBtn.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    streamContainer.requestFullscreen().catch(err => {
+                        console.warn('Fullscreen request failed:', err);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+        }
+
+        if (muteBtn && remoteVideo) {
+            muteBtn.addEventListener('click', () => {
+                remoteVideo.muted = !remoteVideo.muted;
+                muteBtn.textContent = remoteVideo.muted ? 'Unmute' : 'Mute';
+            });
+        }
+
+        if (disconnectBtn) {
+            disconnectBtn.addEventListener('click', () => {
+                console.log('[WebRTC] User clicked disconnect.');
+                closePeerConnection();
+                resetDashboardUI('Disconnected by user.');
+            });
+        }
+
+        if (reconnectBtn) {
+            reconnectBtn.addEventListener('click', () => {
+                console.log('[WebRTC] User clicked reconnect.');
+                resetDashboardUI('Reconnecting to phone camera...');
+                if (signalingClient) {
+                    signalingClient.sendRaw({
+                        type: 'REQUEST_OFFER',
+                        sessionId: signalingClient.sessionId,
+                        role: 'DASHBOARD',
+                        deviceId: signalingClient.deviceId
+                    });
+                }
             });
         }
     }
 
-    function resetDashboardReceiverView() {
-        const remoteVideo = document.getElementById('remoteVideo') || document.getElementById('remote-video-feed-01');
-        const placeholder = document.getElementById('stream-placeholder-01') || document.getElementById('remotePlaceholder');
-
-        if (remoteVideo) {
-            remoteVideo.srcObject = null;
-            remoteVideo.style.display = 'none';
-        }
-        if (placeholder) {
-            placeholder.style.display = 'flex';
-        }
-        const resStatEl = document.getElementById('stat-resolution');
-        if (resStatEl) {
-            resStatEl.textContent = '--';
-        }
-        updateUIConnectionState('WAITING', 'waiting');
-    }
-
     // =========================================================================
-    // INITIALIZATION & SIGNALING DISPATCH
+    // INITIALIZATION
     // =========================================================================
 
-    function initWebRTCModule() {
-        // Initialize modular dev signaling
-        signalingChannel = new DevSignalingChannel();
-
-        signalingChannel.onMessage(async (message) => {
-            if (!message || !message.type) return;
-
-            // Handle incoming messages on phone sender
-            if (currentRole === 'phone-sender') {
-                if (message.type === 'answer' && message.answer) {
-                    console.log("[WebRTC] Received SDP Answer from dashboard.");
-                    await handleAnswer(message.answer);
-                } else if (message.type === 'ice-candidate' && message.candidate && message.role !== 'phone-sender') {
-                    console.log("[WebRTC] Received remote ICE candidate on phone.");
-                    await handleIceCandidate(message.candidate);
-                } else if (message.type === 'request-offer') {
-                    console.log("[WebRTC] Dashboard requested fresh offer. Re-negotiating...");
-                    if (localStream && peerConnection) {
-                        try {
-                            const offer = await createOffer({ iceRestart: true });
-                            signalingChannel.send({
-                                type: 'offer',
-                                offer: offer,
-                                role: 'phone-sender'
-                            });
-                        } catch (e) {
-                            console.warn("Error re-negotiating offer:", e);
-                        }
-                    }
-                }
-            }
-
-            // Handle incoming messages on laptop dashboard receiver
-            if (currentRole === 'laptop-receiver') {
-                if (message.type === 'offer' && message.offer) {
-                    console.log("[WebRTC] Received SDP Offer from phone camera.");
-                    try {
-                        updateUIConnectionState('CONNECTING', 'connecting');
-                        await handleOffer(message.offer);
-                        const answer = await createAnswer();
-                        console.log("[WebRTC] Dispatching SDP Answer to phone camera...");
-                        signalingChannel.send({
-                            type: 'answer',
-                            answer: answer,
-                            role: 'laptop-receiver'
-                        });
-                    } catch (e) {
-                        console.error("[WebRTC] Error answering offer:", e);
-                    }
-                } else if (message.type === 'ice-candidate' && message.candidate && message.role !== 'laptop-receiver') {
-                    console.log("[WebRTC] Received remote ICE candidate on dashboard.");
-                    await handleIceCandidate(message.candidate);
-                } else if (message.type === 'stream-stopped') {
-                    console.log("[WebRTC] Phone camera stream stopped.");
-                    resetDashboardReceiverView();
-                    closePeerConnection();
-                    // Re-initialize for next session
-                    createPeerConnection('laptop-receiver');
-                }
-            }
-        });
-
-        // Listen for camera lifecycle events from camera.js
-        window.addEventListener('womensafety:camera-started', (e) => {
-            const stream = e.detail && e.detail.stream;
-            if (stream) {
-                startPhoneStreaming(stream);
-            }
-        });
-
-        window.addEventListener('womensafety:camera-stopped', () => {
-            stopPhoneStreaming();
-        });
-
-        // Detect if loaded on dashboard.html
-        if (document.getElementById('remoteVideo') || document.getElementById('remote-video-feed-01')) {
+    function init() {
+        // Detect Dashboard Page
+        if (document.getElementById('remoteVideo')) {
             initDashboardReceiver();
         }
-
-        // Clean up on window unload
-        window.addEventListener('beforeunload', () => {
-            closePeerConnection();
-            if (signalingChannel) {
-                signalingChannel.close();
-            }
-        });
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initWebRTCModule);
+        document.addEventListener('DOMContentLoaded', init);
     } else {
-        initWebRTCModule();
+        init();
     }
 
-    // Public API for external integration and testing
+    // Public API
     window.WomenSafetyWebRTC = {
+        startPhoneStreaming: startPhoneStreaming,
+        stopPhoneStreaming: stopPhoneStreaming,
         createPeerConnection: createPeerConnection,
-        createOffer: createOffer,
-        createAnswer: createAnswer,
-        handleOffer: handleOffer,
-        handleAnswer: handleAnswer,
-        handleIceCandidate: handleIceCandidate,
         closePeerConnection: closePeerConnection,
         getPeerConnection: () => peerConnection,
-        getSignalingChannel: () => signalingChannel,
-        startPhoneStreaming: startPhoneStreaming,
-        stopPhoneStreaming: stopPhoneStreaming
+        getRemoteStream: () => remoteStream,
+        getLocalStream: () => localStream,
+        getSignalingClient: () => signalingClient,
+        // Snapshot helper: captures current video frame to canvas
+        captureCurrentFrame: function (targetCanvas) {
+            const video = document.getElementById('remoteVideo');
+            if (!video || video.readyState < 2) return null;
+            const canvas = targetCanvas || document.createElement('canvas');
+            canvas.width = video.videoWidth || 1920;
+            canvas.height = video.videoHeight || 1080;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas;
+        }
     };
+
 })();
