@@ -71,6 +71,14 @@ public class SessionManager {
      * Register a connected client with its role and device identity.
      */
     public synchronized void registerClient(WebSocketSession session, String sessionId, String role, String deviceId) {
+        ClientInfo previousClient = sessionClients.remove(session.getId());
+        if (previousClient != null) {
+            Set<String> previousMembers = roomSessions.get(previousClient.getSessionId());
+            if (previousMembers != null) {
+                previousMembers.remove(session.getId());
+                if (previousMembers.isEmpty()) roomSessions.remove(previousClient.getSessionId());
+            }
+        }
         String effectiveSessionId = (sessionId != null && !sessionId.isBlank()) ? sessionId : "default-session";
         String effectiveDeviceId = (deviceId != null && !deviceId.isBlank()) ? deviceId :
                 ("PHONE".equalsIgnoreCase(role) ? "phone-" + UUID.randomUUID().toString().substring(0, 6) : "dashboard-1");
@@ -108,6 +116,13 @@ public class SessionManager {
      */
     public ClientInfo getClient(WebSocketSession session) {
         return sessionClients.get(session.getId());
+    }
+
+    /**
+     * Get ClientInfo by WebSocket session ID string (used by pairing-aware routing).
+     */
+    public ClientInfo getClientByWsId(String wsId) {
+        return sessionClients.get(wsId);
     }
 
     /**

@@ -1,23 +1,29 @@
 /**
  * webrtc.js
- * 
+ *
  * WebRTC Peer Connection & Real-Time Media Streaming Engine.
- * - Integrates with Spring Boot WebSocket signaling server
- * - Handles SDP Offer / Answer exchange
- * - Handles ICE Candidate discovery and candidate queuing
- * - High-quality adaptive video encoding parameters
- * - Remote video streaming for Laptop Dashboard
+ *
+ * Flow Overview:
+ * PHONE:
+ *   acquire camera stream -> connect & register signaling -> createPeerConnection
+ *   -> addTrack -> createOffer -> setLocalDescription -> sendOffer -> wait for ANSWER
+ *   -> setRemoteDescription -> ICE negotiation -> CONNECTED
+ *
+ * DASHBOARD:
+ *   connect & register signaling -> receive OFFER -> createPeerConnection
+ *   -> setRemoteDescription -> flush queued ICE -> createAnswer -> setLocalDescription
+ *   -> sendAnswer -> ICE negotiation -> CONNECTED -> display remote video
  */
 
 (function () {
     'use strict';
 
-    // Base WebRTC Configuration (STUN server list; ready for TURN additions)
+    // Base WebRTC Configuration (Google STUN servers)
     const RTC_CONFIGURATION = {
         iceServers: (window.WomenSafetyConfig && window.WomenSafetyConfig.getStunServers()) || [
-            {
-                urls: "stun:stun.l.google.com:19302"
-            }
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" }
         ]
     };
 
@@ -28,18 +34,20 @@
     let remoteStream = null;
     let currentRole = null; // 'PHONE' or 'DASHBOARD'
     let pendingIceCandidates = [];
-    let activePhoneDeviceId = 'Phone 1';
+    let activePhoneDeviceId = 'phone-1';
+    let isNegotiating = false;
+    let hasQueuedNegotiation = false;
     let reconnectTimeout = null;
 
     /**
-     * Check WebRTC support
+     * Check WebRTC support in current browser context
      */
     function isWebRTCSupported() {
         return !!(window.RTCPeerConnection && window.RTCSessionDescription && window.RTCIceCandidate);
     }
 
     /**
-     * Normalize and map WebRTC connection states
+     * Normalize and map WebRTC connection states for UI badges
      */
     function normalizeState(state) {
         switch (state) {
@@ -53,7 +61,7 @@
     }
 
     /**
-     * Configure RTCRtpSender encoding parameters for low latency and high quality
+     * Configure RTCRtpSender encoding parameters for low-latency and high video quality
      */
     async function configureSenderParameters(pc, videoTrack) {
         if (!pc || !videoTrack) return;
@@ -69,7 +77,7 @@
             const trackSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
             const height = trackSettings.height || 720;
 
-            // Target bitrates: ~4.5 Mbps for 1080p, ~2.5 Mbps for 720p
+            // Target bitrates: ~4.5 Mbps for 1080p, ~2.5 Mbps for 720p, ~1.2 Mbps for standard
             const targetBitrate = height >= 1080 ? 4500000 : (height >= 720 ? 2500000 : 1200000);
             parameters.encodings[0].maxBitrate = targetBitrate;
             parameters.encodings[0].maxFramerate = 30;
@@ -81,62 +89,78 @@
             await sender.setParameters(parameters);
             console.log(`[WebRTC] Video sender configured: maxBitrate=${(targetBitrate / 1000000).toFixed(1)} Mbps @ 30 FPS`);
         } catch (err) {
-            console.warn('[WebRTC] Note on encoding parameters (non-critical):', err);
+            console.warn('[WebRTC] Note on encoding parameters (non-critical):', err.message);
         }
     }
 
     /**
-     * Create RTCPeerConnection instance
+     * Create RTCPeerConnection instance with comprehensive lifecycle listeners
      */
     function createPeerConnection(role) {
         if (!isWebRTCSupported()) {
             throw new Error("Your browser does not support WebRTC APIs.");
         }
 
-        if (peerConnection) {
-            closePeerConnection();
+        if (peerConnection && peerConnection.connectionState !== 'closed') {
+            console.log('[WebRTC] Reusing or re-initializing existing peer connection...');
+            closePeerConnection(false); // Preserve pending ICE candidate buffer during recreation
         }
 
         currentRole = role;
-        pendingIceCandidates = [];
-
+        console.log('[WebRTC] Creating PeerConnection');
         peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
-        console.log('[WebRTC] Peer connection created');
 
-        // ICE Candidate Gathering
+        // 1. ICE Candidate Gathering Listener
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log('[WebRTC] ICE candidate generated');
+                console.log('[ICE] Candidate generated');
                 if (signalingClient) {
-                    signalingClient.sendIceCandidate(event.candidate);
+                    const target = (currentRole === 'DASHBOARD') ? activePhoneDeviceId : null;
+                    signalingClient.sendIceCandidate(event.candidate, target);
                 }
+            } else {
+                console.log('[ICE] Candidate gathering complete');
             }
         };
 
-        // Connection State Monitoring
+        // 2. Peer Connection State Changes
         peerConnection.onconnectionstatechange = () => {
             const state = peerConnection ? peerConnection.connectionState : 'closed';
-            console.log(`[WebRTC] Connection state: ${state}`);
-
+            console.log(`[WebRTC] Connection state = ${state}`);
             updateUIForConnectionState(state);
 
             if (state === 'failed') {
-                console.warn('[WebRTC] Connection failed, attempting automatic reconnection in 2s...');
+                console.warn('[WebRTC] Connection failed, attempting automatic reconnection...');
                 scheduleReconnection();
             }
         };
 
+        // 3. ICE Connection State Changes
         peerConnection.oniceconnectionstatechange = () => {
             const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
-            const debugIce = document.getElementById('debugICE') || document.getElementById('dashboard-debug-ice') || document.getElementById('dashboard-debug-ice-val');
+            console.log(`[WebRTC] ICE state = ${iceState}`);
+
+            const debugIce = document.getElementById('debugICE') || document.getElementById('dashboard-debug-ice-val');
             if (debugIce) {
                 debugIce.textContent = iceState;
             }
         };
 
-        // Remote Track Arrival (Laptop Dashboard)
+        // 4. Signaling State Changes
+        peerConnection.onsignalingstatechange = () => {
+            const sigState = peerConnection ? peerConnection.signalingState : 'closed';
+            console.log(`[WebRTC] Signaling state = ${sigState}`);
+        };
+
+        // 5. ICE Gathering State Changes
+        peerConnection.onicegatheringstatechange = () => {
+            const gatherState = peerConnection ? peerConnection.iceGatheringState : 'closed';
+            console.log(`[WebRTC] ICE gathering state = ${gatherState}`);
+        };
+
+        // 6. Remote Track Arrival (Laptop Dashboard)
         peerConnection.ontrack = (event) => {
-            console.log('[WebRTC] Remote stream received');
+            console.log('[WebRTC] Remote track received');
             remoteStream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
             handleRemoteStreamReceived(remoteStream);
         };
@@ -150,12 +174,16 @@
     async function flushPendingIceCandidates() {
         if (!peerConnection || !peerConnection.remoteDescription) return;
 
-        while (pendingIceCandidates.length > 0) {
-            const candidate = pendingIceCandidates.shift();
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (err) {
-                console.warn('[WebRTC] Error adding queued ICE candidate:', err);
+        if (pendingIceCandidates.length > 0) {
+            console.log(`[ICE] Flushing ${pendingIceCandidates.length} queued candidate(s)...`);
+            while (pendingIceCandidates.length > 0) {
+                const candidate = pendingIceCandidates.shift();
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    console.log('[ICE] Candidate applied (from queue)');
+                } catch (err) {
+                    console.warn('[WebRTC] Error adding queued ICE candidate:', err);
+                }
             }
         }
     }
@@ -166,20 +194,24 @@
     async function addIceCandidateSafely(candidateInit) {
         if (!candidateInit) return;
 
+        // If peer connection or remote description is not ready, buffer candidate
         if (!peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
+            console.log('[ICE] Candidate queued (waiting for remote description)');
             pendingIceCandidates.push(candidateInit);
             return;
         }
 
         try {
             await peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
+            console.log('[ICE] Candidate applied');
         } catch (err) {
-            console.warn('[WebRTC] Failed to add ICE candidate:', err);
+            console.warn('[WebRTC] Failed to add ICE candidate directly, saving to queue:', err);
+            pendingIceCandidates.push(candidateInit);
         }
     }
 
     /**
-     * Update UI elements across Phone and Dashboard pages
+     * Update UI status indicators on both Phone and Dashboard pages
      */
     function updateUIForConnectionState(state) {
         // --- Phone Page Updates ---
@@ -221,7 +253,7 @@
                 dashboardStatus.innerHTML = '<span class="badge-dot"></span> PHONE DISCONNECTED';
                 dashboardStatus.className = 'badge badge-disconnected';
             } else {
-                dashboardStatus.innerHTML = '<span class="badge-dot"></span> WAITING FOR CAMERA';
+                dashboardStatus.innerHTML = '<span class="badge-dot"></span> WAITING FOR CAMERA...';
                 dashboardStatus.className = 'badge badge-disconnected';
             }
         }
@@ -240,7 +272,7 @@
     }
 
     /**
-     * Bind remote stream to Dashboard UI
+     * Bind incoming remote MediaStream to Dashboard UI
      */
     function handleRemoteStreamReceived(stream) {
         const remoteVideo = document.getElementById('remoteVideo');
@@ -253,12 +285,12 @@
             remoteVideo.srcObject = stream;
             remoteVideo.style.display = 'block';
 
-            remoteVideo.play().catch(e => console.warn('[WebRTC] Remote play promise:', e));
+            remoteVideo.play().catch(e => console.warn('[WebRTC] Remote play promise warning:', e.message));
 
             remoteVideo.onloadedmetadata = () => {
                 const w = remoteVideo.videoWidth;
                 const h = remoteVideo.videoHeight;
-                console.log(`[WebRTC] Remote video resolution: ${w} × ${h}`);
+                console.log(`[WebRTC] Remote video rendering resolution: ${w} × ${h}`);
                 if (resStatEl) resStatEl.textContent = `${w} × ${h}`;
                 if (debugStreamEl) debugStreamEl.textContent = `${w} × ${h}`;
             };
@@ -276,7 +308,7 @@
     }
 
     /**
-     * Reset dashboard UI back to "Waiting for phone camera..."
+     * Reset dashboard UI back to waiting state
      */
     function resetDashboardUI(reason = 'Waiting for phone camera...') {
         const remoteVideo = document.getElementById('remoteVideo');
@@ -312,9 +344,9 @@
             reconnectTimeout = null;
             if (currentRole === 'PHONE' && localStream) {
                 console.log('[WebRTC] Re-initiating phone WebRTC offer...');
-                startPhoneStreaming(localStream);
+                initiatePhoneOffer();
             } else if (currentRole === 'DASHBOARD') {
-                if (signalingClient) {
+                if (signalingClient && signalingClient.isConnected) {
                     signalingClient.sendRaw({
                         type: 'REQUEST_OFFER',
                         sessionId: signalingClient.sessionId,
@@ -323,28 +355,44 @@
                     });
                 }
             }
-        }, 2000);
+        }, 2500);
     }
 
     /**
-     * Close PeerConnection
+     * Close PeerConnection cleanly
      */
-    function closePeerConnection() {
+    function closePeerConnection(clearPendingQueue = true) {
         if (peerConnection) {
             peerConnection.ontrack = null;
             peerConnection.onicecandidate = null;
             peerConnection.onconnectionstatechange = null;
-            peerConnection.close();
+            peerConnection.oniceconnectionstatechange = null;
+            peerConnection.onsignalingstatechange = null;
+            peerConnection.onicegatheringstatechange = null;
+            try {
+                peerConnection.close();
+            } catch (e) {
+                console.warn('[WebRTC] Error closing peer connection:', e);
+            }
             peerConnection = null;
-            console.log('[WebRTC] Peer connection closed');
+            console.log('[WebRTC] PeerConnection closed');
         }
-        pendingIceCandidates = [];
+        if (clearPendingQueue) {
+            pendingIceCandidates = [];
+        }
+        isNegotiating = false;
+        hasQueuedNegotiation = false;
     }
 
     // =========================================================================
     // PHONE SENDER WORKFLOW
     // =========================================================================
 
+    /**
+     * Start phone camera streaming:
+     * 1. Connect and REGISTER with signaling server (wait until registered!)
+     * 2. Initiate SDP Offer once signaling is verified ready
+     */
     async function startPhoneStreaming(stream) {
         localStream = stream;
         currentRole = 'PHONE';
@@ -352,7 +400,7 @@
         const sessionId = window.WomenSafetyConfig.getDefaultSessionId();
         const deviceId = 'phone-1';
 
-        // 1. Initialize Signaling Client if not yet connected
+        // 1. Initialize Signaling Client if not yet created
         if (!signalingClient) {
             signalingClient = new window.SignalingClient({
                 role: 'PHONE',
@@ -368,15 +416,17 @@
             };
 
             signalingClient.onAnswer = async (answer) => {
-                console.log('[WebSocket] Answer received');
+                console.log('[WebRTC] ANSWER received');
                 if (peerConnection) {
                     try {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        console.log('[WebRTC] Remote description set');
                         await flushPendingIceCandidates();
-                        console.log('[WebRTC] Remote answer applied successfully');
                     } catch (err) {
                         console.error('[WebRTC] Error setting remote description for answer:', err);
                     }
+                } else {
+                    console.warn('[WebRTC] Received ANSWER but peerConnection is null');
                 }
             };
 
@@ -385,52 +435,92 @@
             };
 
             signalingClient.onRequestOffer = async () => {
-                console.log('[WebRTC] Dashboard requested fresh offer, re-offering...');
+                console.log('[WS] Dashboard requested fresh offer, re-offering...');
                 if (localStream) {
                     initiatePhoneOffer();
                 }
             };
 
             signalingClient.onPeerConnected = (info) => {
-                console.log('[WebRTC] Dashboard peer connected:', info);
-                // When a dashboard connects, send a fresh offer immediately
+                const peerId = (info && info.deviceId) || 'dashboard-1';
+                console.log(`[WS] Peer connected: ${peerId}`);
+                // When a dashboard connects and stream is active, initiate negotiation
                 if (localStream) {
                     initiatePhoneOffer();
                 }
             };
-
-            signalingClient.connect();
         }
 
-        // 2. Setup PeerConnection & tracks
-        await initiatePhoneOffer();
+        // 2. WAIT UNTIL SIGNALING CLIENT IS FULLY REGISTERED
+        console.log('[WebRTC] Waiting for signaling client to be registered before creating offer...');
+        try {
+            await signalingClient.connect();
+            console.log('[WebRTC] Signaling client is registered. Initiating offer...');
+            await initiatePhoneOffer();
+        } catch (err) {
+            console.error('[WebRTC] Failed to connect signaling client:', err);
+            updateUIForConnectionState('failed');
+        }
     }
 
+    /**
+     * Create and send SDP Offer from Phone to Dashboard
+     */
     async function initiatePhoneOffer() {
-        if (!localStream) return;
+        if (!localStream) {
+            console.warn('[WebRTC] Cannot initiate offer: local camera stream is missing');
+            return;
+        }
+
+        // Concurrency Guard: prevent duplicate simultaneous offers
+        if (isNegotiating) {
+            console.log('[WebRTC] Negotiation already in progress, queuing request...');
+            hasQueuedNegotiation = true;
+            return;
+        }
+
+        isNegotiating = true;
 
         try {
-            createPeerConnection('PHONE');
-
-            // Add video tracks
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                peerConnection.addTrack(videoTrack, localStream);
-                await configureSenderParameters(peerConnection, videoTrack);
+            // Re-create peer connection if null or in terminal state
+            if (!peerConnection || peerConnection.connectionState === 'closed' || peerConnection.connectionState === 'failed') {
+                createPeerConnection('PHONE');
             }
 
-            // Create Offer
+            // Ensure video tracks are added
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                const senders = peerConnection.getSenders();
+                const existingSender = senders.find(s => s.track && s.track.kind === 'video');
+                if (!existingSender) {
+                    peerConnection.addTrack(videoTrack, localStream);
+                    console.log('[WebRTC] Camera track added');
+                    await configureSenderParameters(peerConnection, videoTrack);
+                }
+            }
+
+            console.log('[WebRTC] Creating offer');
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
+            console.log('[WebRTC] Local description set');
 
-            // Send offer via signaling server
+            // Send offer via signaling server (safe queued send if socket temporarily buffering)
             signalingClient.sendOffer(offer);
 
         } catch (err) {
             console.error('[WebRTC] Failed to initiate phone offer:', err);
+        } finally {
+            isNegotiating = false;
+            if (hasQueuedNegotiation) {
+                hasQueuedNegotiation = false;
+                setTimeout(() => initiatePhoneOffer(), 150);
+            }
         }
     }
 
+    /**
+     * Stop Phone Camera Streaming and notify signaling server
+     */
     function stopPhoneStreaming() {
         if (signalingClient) {
             signalingClient.sendStreamStopped();
@@ -438,7 +528,7 @@
             signalingClient = null;
         }
 
-        closePeerConnection();
+        closePeerConnection(true);
         localStream = null;
         updateUIForConnectionState('closed');
     }
@@ -447,6 +537,9 @@
     // LAPTOP DASHBOARD RECEIVER WORKFLOW
     // =========================================================================
 
+    /**
+     * Initialize Dashboard Receiver node
+     */
     function initDashboardReceiver() {
         currentRole = 'DASHBOARD';
         const sessionId = window.WomenSafetyConfig.getDefaultSessionId();
@@ -468,26 +561,41 @@
                 }
             };
 
+            // Process incoming SDP Offer from Phone
             signalingClient.onOffer = async (offer, fromDeviceId) => {
-                console.log(`[WebRTC] Received offer from ${fromDeviceId}`);
-                activePhoneDeviceId = fromDeviceId || 'Phone 1';
+                console.log(`[WebRTC] OFFER received from ${fromDeviceId || 'phone-1'}`);
+                activePhoneDeviceId = fromDeviceId || 'phone-1';
 
                 try {
                     updateUIForConnectionState('connecting');
 
-                    createPeerConnection('DASHBOARD');
+                    // If existing connection is closed or failed, recreate
+                    if (!peerConnection || peerConnection.connectionState === 'closed' || peerConnection.connectionState === 'failed') {
+                        createPeerConnection('DASHBOARD');
+                    }
 
+                    // 1. Set Remote Description (Offer)
+                    console.log('[WebRTC] Setting remote description (offer)...');
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                    console.log('[WebRTC] Remote description set');
+
+                    // 2. Flush queued early ICE candidates
                     await flushPendingIceCandidates();
 
+                    // 3. Create Answer
+                    console.log('[WebRTC] Creating answer');
                     const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
 
-                    signalingClient.sendAnswer(answer, fromDeviceId);
+                    // 4. Set Local Description (Answer)
+                    await peerConnection.setLocalDescription(answer);
+                    console.log('[WebRTC] Local description set');
+
+                    // 5. Send Answer to Phone
+                    signalingClient.sendAnswer(answer, activePhoneDeviceId);
 
                 } catch (err) {
-                    console.error('[WebRTC] Error processing offer on dashboard:', err);
-                    resetDashboardUI('Error establishing WebRTC connection.');
+                    console.error('[WebRTC] Error during offer-answer negotiation on dashboard:', err);
+                    resetDashboardUI('Failed to establish WebRTC connection: ' + (err.message || 'Negotiation error'));
                 }
             };
 
@@ -495,13 +603,27 @@
                 await addIceCandidateSafely(candidate);
             };
 
-            signalingClient.onPeerDisconnected = (info) => {
-                console.log('[WebRTC] Phone peer disconnected:', info);
-                resetDashboardUI('Phone disconnected.');
-                closePeerConnection();
+            signalingClient.onPeerConnected = (info) => {
+                const peerId = (info && info.deviceId) || 'phone-1';
+                console.log(`[WS] Peer connected: ${peerId}`);
+                activePhoneDeviceId = peerId;
+                const statDevice = document.getElementById('stat-device');
+                if (statDevice) statDevice.textContent = activePhoneDeviceId;
             };
 
-            signalingClient.connect();
+            signalingClient.onPeerDisconnected = (info) => {
+                const peerId = (info && info.deviceId) || 'phone-1';
+                console.log(`[WS] Peer disconnected: ${peerId}`);
+                resetDashboardUI('Phone camera disconnected.');
+                closePeerConnection(true);
+            };
+
+            // Connect signaling client for dashboard
+            signalingClient.connect().then(() => {
+                console.log('[WS] Waiting for phone...');
+            }).catch(err => {
+                console.warn('[WS] Dashboard signaling initial connect error:', err.message);
+            });
         }
 
         // Setup dashboard UI controls
@@ -541,7 +663,7 @@
         if (disconnectBtn) {
             disconnectBtn.addEventListener('click', () => {
                 console.log('[WebRTC] User clicked disconnect.');
-                closePeerConnection();
+                closePeerConnection(true);
                 resetDashboardUI('Disconnected by user.');
             });
         }
@@ -550,7 +672,7 @@
             reconnectBtn.addEventListener('click', () => {
                 console.log('[WebRTC] User clicked reconnect.');
                 resetDashboardUI('Reconnecting to phone camera...');
-                if (signalingClient) {
+                if (signalingClient && signalingClient.isConnected) {
                     signalingClient.sendRaw({
                         type: 'REQUEST_OFFER',
                         sessionId: signalingClient.sessionId,
@@ -588,18 +710,7 @@
         getPeerConnection: () => peerConnection,
         getRemoteStream: () => remoteStream,
         getLocalStream: () => localStream,
-        getSignalingClient: () => signalingClient,
-        // Snapshot helper: captures current video frame to canvas
-        captureCurrentFrame: function (targetCanvas) {
-            const video = document.getElementById('remoteVideo');
-            if (!video || video.readyState < 2) return null;
-            const canvas = targetCanvas || document.createElement('canvas');
-            canvas.width = video.videoWidth || 1920;
-            canvas.height = video.videoHeight || 1080;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            return canvas;
-        }
+        getSignalingClient: () => signalingClient
     };
 
 })();

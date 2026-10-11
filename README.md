@@ -36,7 +36,14 @@ node serve.js
 
 ## Deployed Web Application
 - **Frontend URL**: [https://major-project-frontend-blond.vercel.app](https://major-project-frontend-blond.vercel.app)
-- **Connect Deployed Frontend to Backend**: Append `?ws=wss://YOUR-BACKEND-DOMAIN/ws` to the URL.
+- **Laptop Dashboard**: [https://major-project-frontend-blond.vercel.app/pages/dashboard.html](https://major-project-frontend-blond.vercel.app/pages/dashboard.html)
+- **Phone Pairing Page**: [https://major-project-frontend-blond.vercel.app/pages/phone.html](https://major-project-frontend-blond.vercel.app/pages/phone.html)
+- **Connect Deployed Frontend to Backend**: Open the dashboard with `?ws=wss://YOUR-BACKEND-DOMAIN/ws`. Its QR code carries the backend address and one-time pairing code; for manual phone entry, open the phone URL with the same `?ws=...` parameter.
+- **Secure pairing**: The dashboard issues a two-minute, single-use code. The phone must pair with it and the user must tap **Start Streaming** before camera access and WebRTC negotiation begin. Pairing authorization is held only in page memory and expires when either WebSocket disconnects.
+- **Backend deployment**: Configure the `/ws` endpoint behind HTTPS/WSS, keep port 8080 private behind the tunnel or reverse proxy, and allow the Vercel origin in the WebSocket configuration. The current live pairing store is in-memory, so restarting the backend invalidates active sessions. STUN-only WebRTC can fail across restrictive carrier or enterprise NATs; configure TURN for reliable cross-network connectivity.
+
+## Pairing verification
+From `WomenSafety`, run `.\mvnw.cmd test`. The pairing manager tests cover code generation/expiry, single-use consumption, concurrent consumption, failed-attempt rate limiting, and immediate unpair token revocation. Cross-device camera permission, browser QR scanning, and live WebRTC media still require a real HTTPS phone and dashboard connected to a deployed WSS backend.
 
 ---
 

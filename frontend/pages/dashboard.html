@@ -3,9 +3,310 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Centralized Monitoring Dashboard - Women Safety">
+    <meta name="description" content="Centralized Monitoring Dashboard - Women Safety Live Streaming">
     <title>Laptop Dashboard - Women Safety</title>
     <link rel="stylesheet" href="../css/style.css">
+    <style>
+        /* ============================================================
+         * Pairing Section Styles
+         * ============================================================ */
+        .pairing-section {
+            margin-bottom: 28px;
+        }
+
+        .pairing-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            backdrop-filter: blur(12px);
+        }
+
+        .pairing-card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pairing-card-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+
+        /* State panels */
+        .pairing-panel { display: none; }
+        .pairing-panel.active { display: block; }
+
+        /* --- WAITING PANEL --- */
+        .pairing-waiting-layout {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 32px;
+            align-items: start;
+        }
+
+        @media (max-width: 640px) {
+            .pairing-waiting-layout { grid-template-columns: 1fr; }
+        }
+
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #qr-canvas {
+            border-radius: 12px;
+            background: #fff;
+            padding: 8px;
+            box-shadow: 0 0 30px rgba(99,102,241,0.2);
+        }
+
+        .qr-loading-placeholder {
+            width: 180px;
+            height: 180px;
+            border-radius: 12px;
+            background: rgba(99,102,241,0.08);
+            border: 2px dashed rgba(99,102,241,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .pairing-info {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .pairing-code-block {
+            background: rgba(99,102,241,0.08);
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: var(--radius-md);
+            padding: 20px;
+        }
+
+        .pairing-code-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 8px;
+        }
+
+        .pairing-code-value {
+            font-size: 2.4rem;
+            font-weight: 800;
+            color: var(--primary);
+            letter-spacing: 0.15em;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .pairing-code-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        .pairing-countdown-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pairing-countdown-label {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .pairing-countdown-value {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--warning);
+            font-variant-numeric: tabular-nums;
+            transition: color 0.3s;
+        }
+
+        .pairing-countdown-value.urgent {
+            color: var(--danger);
+            animation: pulse 1s infinite;
+        }
+
+        .pairing-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            background: var(--success-bg);
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(16,185,129,0.2);
+        }
+
+        .pairing-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+            flex-shrink: 0;
+            animation: pulse 2s infinite;
+        }
+
+        .pairing-status-text {
+            font-size: 0.82rem;
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        /* --- PAIRED PANEL --- */
+        .paired-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 480px) {
+            .paired-info-grid { grid-template-columns: 1fr; }
+        }
+
+        .paired-info-item {
+            background: rgba(16,185,129,0.06);
+            border: 1px solid rgba(16,185,129,0.15);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+        }
+
+        .paired-info-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 4px;
+        }
+
+        .paired-info-value {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .pairing-state-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border-radius: var(--radius-full);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .state-waiting { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
+        .state-paired { background: rgba(16,185,129,0.12); color: var(--success); border: 1px solid rgba(16,185,129,0.25); }
+        .state-streaming { background: rgba(99,102,241,0.15); color: var(--primary); border: 1px solid rgba(99,102,241,0.3); }
+        .state-disconnected { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.2); }
+        .state-connecting { background: rgba(148,163,184,0.1); color: var(--text-secondary); border: 1px solid rgba(148,163,184,0.2); }
+
+        .paired-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-unpair {
+            background: rgba(239,68,68,0.08);
+            color: var(--danger);
+            border: 1px solid rgba(239,68,68,0.3);
+            padding: 9px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-unpair:hover {
+            background: rgba(239,68,68,0.15);
+            border-color: var(--danger);
+        }
+
+        .btn-stop-stream {
+            background: rgba(239,68,68,0.08);
+            color: var(--danger);
+            border: 1px solid rgba(239,68,68,0.3);
+            padding: 9px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-stop-stream:hover {
+            background: rgba(239,68,68,0.15);
+        }
+
+        .btn-new-pair {
+            background: rgba(99,102,241,0.1);
+            color: var(--primary);
+            border: 1px solid rgba(99,102,241,0.25);
+            padding: 9px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn-new-pair:hover {
+            background: rgba(99,102,241,0.18);
+        }
+
+        /* Expired code banner */
+        .code-expired-banner {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.2);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--danger);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Spinning loader */
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -41,10 +342,152 @@
                 </div>
             </div>
 
-            <!-- Error Message Alert Box -->
+            <!-- Error Alert -->
             <div id="dashboardErrorMessage" class="error-message-box" role="alert" style="display: none; margin-bottom: 16px;"></div>
 
-            <!-- Camera Card: Camera 01 -->
+            <!-- ============================================================
+                 PAIRING SECTION
+                 ============================================================ -->
+            <div class="pairing-section">
+                <div class="pairing-card">
+                    <div class="pairing-card-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary)">
+                            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                            <line x1="12" y1="18" x2="12" y2="18"/>
+                        </svg>
+                        Mobile Device Pairing
+                        <span id="pairing-state-badge" class="pairing-state-badge state-connecting">
+                            <span class="badge-dot"></span> Connecting...
+                        </span>
+                    </div>
+                    <div class="pairing-card-subtitle">
+                        Pair a mobile phone to start secure live streaming. The phone must pair before it can stream.
+                    </div>
+
+                    <!-- ---- WAITING FOR PAIRING panel ---- -->
+                    <div id="panel-waiting" class="pairing-panel active">
+                        <div id="waiting-loading" style="color:var(--text-muted); font-size:0.9rem; display:flex; align-items:center; gap:8px;">
+                            <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.3"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                            Connecting to signaling server...
+                        </div>
+
+                        <div id="waiting-content" style="display:none;">
+                            <!-- Expired code banner (hidden by default) -->
+                            <div id="code-expired-banner" class="code-expired-banner" style="display:none; margin-bottom:16px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                Pairing code expired.
+                                <button id="btn-regenerate-code" class="btn-new-pair" style="margin-left:auto; padding: 4px 12px; font-size: 0.78rem;">Generate New Code</button>
+                            </div>
+
+                            <div class="pairing-waiting-layout">
+                                <!-- QR Code -->
+                                <div class="qr-container">
+                                    <div id="qr-placeholder" class="qr-loading-placeholder">Generating QR...</div>
+                                    <canvas id="qr-canvas" width="180" height="180" style="display:none;"></canvas>
+                                    <span style="font-size:0.75rem; color:var(--text-muted);">Scan to open phone page</span>
+                                </div>
+
+                                <!-- Code + info -->
+                                <div class="pairing-info">
+                                    <div class="pairing-code-block">
+                                        <div class="pairing-code-label">Pairing Code</div>
+                                        <div class="pairing-code-value" id="pairing-code-display">---</div>
+                                        <div class="pairing-code-hint">Enter this code on your phone or scan the QR</div>
+                                    </div>
+
+                                    <div class="pairing-countdown-row">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                        <span class="pairing-countdown-label">Expires in:</span>
+                                        <span class="pairing-countdown-value" id="pairing-countdown">02:00</span>
+                                    </div>
+
+                                    <div class="pairing-status-row">
+                                        <span class="pairing-status-dot"></span>
+                                        <span class="pairing-status-text">Waiting for mobile device to connect...</span>
+                                    </div>
+                                    <div id="waiting-device-count" style="font-size:0.78rem; color:var(--text-muted);">Connected / paired devices: 0</div>
+
+                                    <div style="font-size:0.78rem; color:var(--text-muted);">
+                                        <strong style="color:var(--text-secondary);">Phone URL:</strong>
+                                        <a id="phone-page-url" href="https://major-project-frontend-blond.vercel.app/pages/phone.html" target="_blank" style="color:var(--primary); margin-left:4px; font-size:0.75rem;">
+                                            major-project-frontend-blond.vercel.app/pages/phone.html
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ---- PAIRED panel ---- -->
+                    <div id="panel-paired" class="pairing-panel">
+                        <div class="paired-info-grid">
+                            <div class="paired-info-item">
+                                <div class="paired-info-label">Phone Device ID</div>
+                                <div class="paired-info-value" id="paired-device-id">—</div>
+                            </div>
+                            <div class="paired-info-item">
+                                <div class="paired-info-label">Paired At</div>
+                                <div class="paired-info-value" id="paired-at">—</div>
+                            </div>
+                            <div class="paired-info-item">
+                                <div class="paired-info-label">Session</div>
+                                <div class="paired-info-value" id="paired-session-id">—</div>
+                            </div>
+                            <div class="paired-info-item">
+                                <div class="paired-info-label">Stream Status</div>
+                                <div class="paired-info-value" id="paired-stream-status">Idle</div>
+                            </div>
+                            <div class="paired-info-item">
+                                <div class="paired-info-label">Connected / Paired Devices</div>
+                                <div class="paired-info-value" id="paired-device-count">1</div>
+                            </div>
+                        </div>
+
+                        <div class="paired-controls">
+                            <button id="btn-stop-stream" class="btn-stop-stream" style="display:none;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                                Stop Streaming
+                            </button>
+                            <button id="btn-unpair" class="btn-unpair">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Unpair Device
+                            </button>
+                            <button id="btn-request-offer" class="btn" style="display:none; padding:9px 18px; font-size:0.85rem;">
+                                Request Stream
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ---- DISCONNECTED panel ---- -->
+                    <div id="panel-disconnected" class="pairing-panel">
+                        <div class="code-expired-banner" style="background:rgba(245,158,11,0.08); border-color:rgba(245,158,11,0.2); color:var(--warning);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            Phone disconnected. Pair a new device or wait for phone to reconnect.
+                        </div>
+                        <div style="margin-top:14px;">
+                            <button id="btn-pair-new-after-disconnect" class="btn-new-pair">
+                                + Pair New Device
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ---- UNPAIRED panel ---- -->
+                    <div id="panel-unpaired" class="pairing-panel">
+                        <div class="code-expired-banner" style="background:rgba(148,163,184,0.05); border-color:rgba(148,163,184,0.15); color:var(--text-secondary);">
+                            Device unpaired. Generate a new pairing session to connect a new phone.
+                        </div>
+                        <div style="margin-top:14px;">
+                            <button id="btn-pair-new-after-unpair" class="btn-new-pair">
+                                + Create New Pairing Session
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================
+                 CAMERA FEED CARD
+                 ============================================================ -->
             <div class="glass-card camera-card" id="camera-card-01">
                 <div class="camera-card-header">
                     <div class="camera-identity">
@@ -59,9 +502,8 @@
                             <span class="camera-meta">Primary Mobile Stream</span>
                         </div>
                     </div>
-                    <!-- Status Indicator: Shows CONNECTED or WAITING FOR CAMERA -->
                     <span class="badge badge-disconnected" id="camera-01-status">
-                        <span class="badge-dot"></span> WAITING FOR CAMERA...
+                        <span class="badge-dot"></span> WAITING FOR PAIRING...
                     </span>
                 </div>
 
@@ -73,21 +515,13 @@
                             <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                             <line x1="1" y1="1" x2="23" y2="23"></line>
                         </svg>
-                        <h3>Waiting for camera...</h3>
-                        <p>Waiting for phone camera stream. Open the Phone Camera on your mobile device and click Start Camera to begin live streaming.</p>
+                        <h3>Waiting for paired phone...</h3>
+                        <p id="stream-placeholder-hint">Pair a mobile device using the section above, then tap Start Streaming on your phone.</p>
                     </div>
-
-                    <!-- Required Remote Video Tag (plays live phone camera stream) -->
-                    <video
-                        id="remoteVideo"
-                        autoplay
-                        playsinline
-                        muted
-                        controls="false">
-                    </video>
+                    <video id="remoteVideo" autoplay playsinline muted controls="false"></video>
                 </div>
 
-                <!-- Live Stream Controls (Fullscreen, Mute, Disconnect, Reconnect) -->
+                <!-- Stream Controls -->
                 <div class="dashboard-controls-bar" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
                     <button type="button" class="btn btn-outline" id="btn-fullscreen" style="padding: 8px 16px; font-size: 0.85rem;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -110,20 +544,12 @@
                         </svg>
                         Reconnect
                     </button>
-                    <button type="button" class="btn btn-outline" id="btn-disconnect" style="padding: 8px 16px; font-size: 0.85rem; color: var(--danger); border-color: rgba(239, 68, 68, 0.3);">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="15" y1="9" x2="9" y2="15"></line>
-                            <line x1="9" y1="9" x2="15" y2="15"></line>
-                        </svg>
-                        Disconnect
-                    </button>
                 </div>
 
                 <!-- Stream Info / Footer -->
                 <div class="stream-info-bar">
                     <div class="stream-stats">
-                        <div class="stat-item"><span>Device:</span> <strong id="stat-device">Phone 1</strong></div>
+                        <div class="stat-item"><span>Device:</span> <strong id="stat-device">—</strong></div>
                         <div class="stat-item"><span>Resolution:</span> <strong id="stat-resolution">--</strong></div>
                         <div class="stat-item"><span>Status:</span> <strong id="dashboard-debug-webrtc">Waiting</strong></div>
                         <div class="stat-item"><span>Connection:</span> <strong id="dashboard-debug-conn">Ready</strong></div>
@@ -133,7 +559,7 @@
                     </div>
                 </div>
 
-                <!-- Collapsible Diagnostics Section -->
+                <!-- Collapsible Diagnostics -->
                 <details class="debug-panel" id="dashboard-debug-panel" style="margin-top: 16px;">
                     <summary class="debug-panel-title">
                         <span>Stream Diagnostics</span>
@@ -153,8 +579,8 @@
                             <span class="debug-val" id="dashboard-debug-stream">Awaiting stream</span>
                         </div>
                         <div class="debug-item">
-                            <span class="debug-label">Signaling:</span>
-                            <span class="debug-val">Spring Boot WebSocket (/ws)</span>
+                            <span class="debug-label">Pairing State:</span>
+                            <span class="debug-val" id="debug-pairing-state">IDLE</span>
                         </div>
                     </div>
                 </details>
@@ -167,10 +593,630 @@
         </footer>
     </div>
 
+    <!-- QR Code library (qrcode.js via CDN, no key required) -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+
     <!-- Scripts -->
     <script src="../js/config.js"></script>
-    <script src="../js/websocket.js"></script>
-    <script src="../js/webrtc.js"></script>
-    <script src="../js/app.js"></script>
+    <script src="../js/pairing.js"></script>
+
+    <script>
+    /**
+     * Dashboard Pairing + WebRTC Inline Controller
+     * Coordinates between DashboardPairingClient and WebRTC peer connection.
+     */
+    (function () {
+        'use strict';
+
+        // ====================================================================
+        // STATE
+        // ====================================================================
+        const RTC_CONFIG = {
+            iceServers: window.WomenSafetyConfig
+                ? window.WomenSafetyConfig.getStunServers()
+                : [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        let pairingClient = null;
+        let peerConnection = null;
+        let remoteStream = null;
+        let pendingIceCandidates = [];
+        let currentDashboardState = 'IDLE'; // Mirrors pairing state
+        let activePhoneDeviceId = null;
+        let isNegotiating = false;
+        let awaitingOffer = true;
+        let streamConfirmed = false;
+
+        // ====================================================================
+        // DOM REFS
+        // ====================================================================
+        const $ = id => document.getElementById(id);
+
+        const elStateBadge     = $('pairing-state-badge');
+        const elPairingCode    = $('pairing-code-display');
+        const elCountdown      = $('pairing-countdown');
+        const elExpiredBanner  = $('code-expired-banner');
+        const elWaitingLoading = $('waiting-loading');
+        const elWaitingContent = $('waiting-content');
+        const elPairedDeviceId = $('paired-device-id');
+        const elPairedAt       = $('paired-at');
+        const elPairedSession  = $('paired-session-id');
+        const elPairedStream   = $('paired-stream-status');
+        const elRemoteVideo    = $('remoteVideo');
+        const elPlaceholder    = $('stream-placeholder-01');
+        const elPlaceholderHint = $('stream-placeholder-hint');
+        const elCameraStatus   = $('camera-01-status');
+        const elServerBadge    = $('server-status-badge');
+        const elStatDevice     = $('stat-device');
+        const elStatResolution = $('stat-resolution');
+        const elDebugWebrtc    = $('dashboard-debug-webrtc');
+        const elDebugConn      = $('dashboard-debug-conn');
+        const elDebugWebrtcVal = $('dashboard-debug-webrtc-val');
+        const elDebugIce       = $('dashboard-debug-ice-val');
+        const elDebugStream    = $('dashboard-debug-stream');
+        const elDebugPairing   = $('debug-pairing-state');
+
+        // ====================================================================
+        // PANEL MANAGEMENT
+        // ====================================================================
+        function showPanel(panelId) {
+            ['panel-waiting', 'panel-paired', 'panel-disconnected', 'panel-unpaired'].forEach(id => {
+                const el = $(id);
+                if (el) el.classList.toggle('active', id === panelId);
+            });
+        }
+
+        function updateStateBadge(state) {
+            const labels = {
+                'IDLE': ['state-connecting', 'Connecting...'],
+                'CONNECTING': ['state-connecting', 'Connecting...'],
+                'WAITING_FOR_PAIRING': ['state-waiting', 'Waiting for Phone'],
+                'PAIRING_REQUESTED': ['state-waiting', 'Pairing Requested...'],
+                'PAIRED': ['state-paired', '● Paired'],
+                'CAMERA_READY': ['state-paired', '● Camera Ready'],
+                'STREAMING': ['state-streaming', '● Streaming'],
+                'DISCONNECTED': ['state-disconnected', 'Phone Disconnected'],
+                'UNPAIRED': ['state-disconnected', 'Unpaired'],
+            };
+            const [cls, label] = labels[state] || ['state-connecting', state];
+            elStateBadge.className = 'pairing-state-badge ' + cls;
+            elStateBadge.innerHTML = `<span class="badge-dot"></span> ${label}`;
+            if (elDebugPairing) elDebugPairing.textContent = state;
+        }
+
+        function updateCameraStatusBadge(state) {
+            const map = {
+                'WAITING_FOR_PAIRING': ['badge badge-disconnected', 'WAITING FOR PAIRING...'],
+                'PAIRED': ['badge badge-warning', 'PAIRED - AWAITING STREAM'],
+                'STREAMING': ['badge badge-connected', 'STREAMING'],
+                'DISCONNECTED': ['badge badge-disconnected', 'PHONE DISCONNECTED'],
+            };
+            const [cls, label] = map[state] || ['badge badge-disconnected', state];
+            if (elCameraStatus) {
+                elCameraStatus.className = cls;
+                elCameraStatus.innerHTML = `<span class="badge-dot"></span> ${label}`;
+            }
+        }
+
+        function updateCountdownUI(seconds) {
+            if (!elCountdown) return;
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            elCountdown.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            elCountdown.classList.toggle('urgent', seconds < 30);
+        }
+
+        // ====================================================================
+        // QR CODE GENERATION
+        // ====================================================================
+        function generateQR(phoneUrl, pairingCode) {
+            const fullUrl = `${phoneUrl}#code=${encodeURIComponent(pairingCode)}`;
+            const canvas = $('qr-canvas');
+            const placeholder = $('qr-placeholder');
+
+            if (typeof QRCode !== 'undefined' && canvas) {
+                QRCode.toCanvas(canvas, fullUrl, {
+                    width: 180,
+                    margin: 1,
+                    color: { dark: '#000000', light: '#ffffff' }
+                }, (err) => {
+                    if (err) {
+                        console.error('[QR] Generation error:', err);
+                        if (placeholder) placeholder.textContent = 'QR unavailable';
+                    } else {
+                        canvas.style.display = 'block';
+                        if (placeholder) placeholder.style.display = 'none';
+                        console.log('[QR] Code generated for phone pairing URL');
+                    }
+                });
+            } else {
+                if (placeholder) placeholder.textContent = 'QR lib unavailable - use manual code';
+            }
+        }
+
+        // ====================================================================
+        // WEBRTC - DASHBOARD RECEIVER
+        // ====================================================================
+        function createPeerConnection() {
+            if (peerConnection && peerConnection.connectionState !== 'closed') {
+                closePeerConnection();
+                awaitingOffer = true;
+            }
+
+            console.log('[WebRTC] Creating dashboard PeerConnection');
+            peerConnection = new RTCPeerConnection(RTC_CONFIG);
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate && pairingClient) {
+                    pairingClient.sendIceCandidate(event.candidate);
+                    console.log('[ICE] Dashboard candidate sent to phone');
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                const state = peerConnection ? peerConnection.connectionState : 'closed';
+                console.log(`[WebRTC] Connection state = ${state}`);
+                updateWebRTCUI(state);
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
+                console.log(`[WebRTC] ICE state = ${iceState}`);
+                if (elDebugIce) elDebugIce.textContent = iceState;
+            };
+
+            peerConnection.onsignalingstatechange = () => {
+                console.log(`[WebRTC] Signaling state = ${peerConnection ? peerConnection.signalingState : 'closed'}`);
+            };
+
+            peerConnection.ontrack = (event) => {
+                console.log('[WebRTC] Remote track received from paired phone');
+                const stream = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+                handleRemoteStream(stream);
+            };
+
+            return peerConnection;
+        }
+
+        async function handleOfferFromPhone(offer, fromDeviceId) {
+            if (!pairingClient || !['CAMERA_READY', 'STREAMING'].includes(pairingClient.state)) {
+                console.warn('[WebRTC] Ignoring OFFER - not in paired state');
+                return;
+            }
+            if (!offer || !offer.sdp || isNegotiating) {
+                console.warn('[WebRTC] Ignoring duplicate or invalid OFFER');
+                return;
+            }
+            if (peerConnection && peerConnection.remoteDescription
+                    && peerConnection.remoteDescription.sdp === offer.sdp) {
+                console.log('[WebRTC] Duplicate OFFER ignored');
+                return;
+            }
+            activePhoneDeviceId = fromDeviceId || pairingClient.pairedPhoneDeviceId;
+            console.log(`[WebRTC] Processing OFFER from paired phone: ${activePhoneDeviceId}`);
+
+            isNegotiating = true;
+            try {
+                updateWebRTCUI('connecting');
+                if (peerConnection && peerConnection.signalingState !== 'stable') {
+                    console.warn('[WebRTC] Ignoring OFFER while negotiation is already active');
+                    return;
+                }
+                if (peerConnection && peerConnection.connectionState !== 'closed') closePeerConnection(false);
+                createPeerConnection();
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                console.log('[WebRTC] Remote description set');
+                awaitingOffer = false;
+                await flushPendingIceCandidates();
+
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                console.log('[WebRTC] Answer created and local description set');
+
+                if (!pairingClient.sendAnswer(answer)) {
+                    throw new Error('Unable to send the WebRTC answer over signaling');
+                }
+            } catch (err) {
+                console.error('[WebRTC] Error during offer-answer negotiation:', err);
+                resetVideoUI('WebRTC negotiation error: ' + err.message);
+            } finally {
+                isNegotiating = false;
+            }
+        }
+
+        async function addIceCandidateSafely(candidate) {
+            if (!candidate) return;
+            if (awaitingOffer || !peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
+                pendingIceCandidates.push(candidate);
+                return;
+            }
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                console.log('[ICE] Candidate applied');
+            } catch (err) {
+                console.warn('[WebRTC] Failed to add ICE candidate:', err);
+                pendingIceCandidates.push(candidate);
+            }
+        }
+
+        async function flushPendingIceCandidates() {
+            if (!peerConnection || !peerConnection.remoteDescription) return;
+            console.log(`[ICE] Flushing ${pendingIceCandidates.length} queued candidates`);
+            while (pendingIceCandidates.length > 0) {
+                const c = pendingIceCandidates.shift();
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+                } catch (err) {
+                    console.warn('[ICE] Failed to apply queued candidate:', err);
+                }
+            }
+        }
+
+        function handleRemoteStream(stream) {
+            remoteStream = stream;
+            if (elRemoteVideo) {
+                elRemoteVideo.srcObject = stream;
+                elRemoteVideo.style.display = 'block';
+                elRemoteVideo.play().catch(e => console.warn('[WebRTC] Play promise:', e.message));
+                elRemoteVideo.onloadedmetadata = () => {
+                    const w = elRemoteVideo.videoWidth;
+                    const h = elRemoteVideo.videoHeight;
+                    console.log(`[WebRTC] Remote stream resolution: ${w}×${h}`);
+                    if (elStatResolution) elStatResolution.textContent = `${w} × ${h}`;
+                    if (elDebugStream) elDebugStream.textContent = `${w} × ${h}`;
+                };
+            }
+            if (elPlaceholder) elPlaceholder.style.display = 'none';
+            if (elStatDevice) elStatDevice.textContent = activePhoneDeviceId || 'Phone';
+            if (!streamConfirmed && pairingClient && pairingClient.state === 'CAMERA_READY') {
+                streamConfirmed = true;
+                if (pairingClient.sendStreamStarted()) {
+                    pairingClient.setState('STREAMING');
+                    if (elPairedStream) elPairedStream.textContent = 'STREAMING';
+                } else {
+                    console.error('[WebRTC] Remote track received but streaming state could not be reported');
+                }
+            }
+            updateWebRTCUI('connected');
+            if (pairingClient && pairingClient.state === 'STREAMING') {
+                updateStateBadge('STREAMING');
+                updateCameraStatusBadge('STREAMING');
+                $('btn-stop-stream').style.display = 'flex';
+            }
+        }
+
+        function resetVideoUI(hint) {
+            if (elRemoteVideo) {
+                elRemoteVideo.srcObject = null;
+                elRemoteVideo.style.display = 'none';
+            }
+            if (elPlaceholder) elPlaceholder.style.display = 'flex';
+            if (elPlaceholderHint) elPlaceholderHint.textContent = hint || 'Waiting for phone camera stream.';
+            if (elStatResolution) elStatResolution.textContent = '--';
+            if (elDebugStream) elDebugStream.textContent = 'No stream';
+            $('btn-stop-stream').style.display = 'none';
+        }
+
+        function closePeerConnection(clearPendingQueue = true) {
+            if (peerConnection) {
+                peerConnection.ontrack = null;
+                peerConnection.onicecandidate = null;
+                peerConnection.onconnectionstatechange = null;
+                peerConnection.oniceconnectionstatechange = null;
+                try { peerConnection.close(); } catch(e) {}
+                peerConnection = null;
+                console.log('[WebRTC] PeerConnection closed');
+            }
+            if (clearPendingQueue) pendingIceCandidates = [];
+            streamConfirmed = false;
+        }
+
+        function updateWebRTCUI(state) {
+            const map = {
+                'connected': ['Connected', 'Connected'],
+                'connecting': ['Connecting...', 'Connecting...'],
+                'failed': ['Connection Failed', 'Failed'],
+                'disconnected': ['Connection Lost', 'Lost'],
+                'closed': ['Closed', 'Closed']
+            };
+            const [label, val] = map[state] || ['Waiting', state];
+            if (elDebugWebrtc) elDebugWebrtc.textContent = label;
+            if (elDebugWebrtcVal) elDebugWebrtcVal.textContent = val;
+            if (elDebugConn) elDebugConn.textContent = label;
+        }
+
+        // ====================================================================
+        // PAIRING CLIENT SETUP
+        // ====================================================================
+        function initPairingClient() {
+            pairingClient = new DashboardPairingClient({
+                signalingUrl: window.WomenSafetyConfig.getSignalingUrl(),
+                deviceId: 'dashboard-' + Math.random().toString(36).substring(2, 8)
+            });
+
+            // --- State changes ---
+            pairingClient.onStateChange = (newState) => {
+                currentDashboardState = newState;
+                updateStateBadge(newState);
+                updateCameraStatusBadge(newState);
+
+                if (newState === 'WAITING_FOR_PAIRING') {
+                    showPanel('panel-waiting');
+                } else if (newState === 'PAIRED' || newState === 'CAMERA_READY') {
+                    showPanel('panel-paired');
+                    $('btn-stop-stream').style.display = 'none';
+                    if (elPairedStream) {
+                        elPairedStream.textContent = newState === 'CAMERA_READY' ? 'Camera ready' : 'Waiting for stream';
+                    }
+                } else if (newState === 'STREAMING') {
+                    showPanel('panel-paired');
+                    $('btn-stop-stream').style.display = 'flex';
+                } else if (newState === 'DISCONNECTED') {
+                    showPanel('panel-disconnected');
+                    resetVideoUI('Phone disconnected. Pair a new device.');
+                    closePeerConnection();
+                } else if (newState === 'UNPAIRED') {
+                    showPanel('panel-unpaired');
+                    resetVideoUI('Device unpaired. Pair a new device to stream.');
+                    closePeerConnection();
+                }
+            };
+
+            // --- Pairing session created ---
+            pairingClient.onPairingSessionCreated = (info) => {
+                elWaitingLoading.style.display = 'none';
+                elWaitingContent.style.display = 'block';
+                elExpiredBanner.style.display = 'none';
+
+                elPairingCode.textContent = info.pairingCode;
+                updateCountdownUI(info.secondsUntilExpiry);
+
+                const phonePageUrl = new URL('phone.html', window.location.href);
+                const signalingUrl = window.WomenSafetyConfig.getSignalingUrl();
+                if (signalingUrl) phonePageUrl.searchParams.set('ws', signalingUrl);
+                generateQR(phonePageUrl.href, info.pairingCode);
+                const count = $('waiting-device-count');
+                if (count) count.textContent = 'Connected / paired devices: 0';
+
+                // Update server status badge
+                if (elServerBadge) {
+                    elServerBadge.className = 'badge badge-connected';
+                    elServerBadge.innerHTML = '<span class="badge-dot"></span> Signaling Server Online';
+                }
+
+                // Countdown tick
+                pairingClient.onStateChange = pairingClient.onStateChange; // keep
+                const countdownInterval = setInterval(() => {
+                    if (!pairingClient) { clearInterval(countdownInterval); return; }
+                    updateCountdownUI(pairingClient.countdownSeconds);
+                    if (pairingClient.countdownSeconds <= 0) {
+                        clearInterval(countdownInterval);
+                    }
+                }, 500);
+            };
+
+            // --- Device paired ---
+            pairingClient.onDevicePaired = (info) => {
+                if (elPairedDeviceId) elPairedDeviceId.textContent = info.phoneDeviceId || '—';
+                if (elPairedAt) elPairedAt.textContent = info.pairedAt ? new Date(info.pairedAt).toLocaleTimeString() : '—';
+                if (elPairedSession) elPairedSession.textContent = info.pairingSessionId ? info.pairingSessionId.substring(0, 12) + '...' : '—';
+                if (elPairedStream) elPairedStream.textContent = 'Waiting for stream';
+                if ($('paired-device-count')) $('paired-device-count').textContent = '1';
+                if (elStatDevice) elStatDevice.textContent = info.phoneDeviceId || 'Phone';
+                if (elPlaceholderHint) elPlaceholderHint.textContent = 'Phone paired! Tap "Start Streaming" on your phone to begin.';
+                activePhoneDeviceId = info.phoneDeviceId;
+                console.log('[Dashboard] Device paired successfully:', info.phoneDeviceId);
+            };
+
+            // --- Device disconnected ---
+            pairingClient.onDeviceDisconnected = (info) => {
+                resetVideoUI('Phone disconnected. Pair a new device.');
+                closePeerConnection();
+                awaitingOffer = true;
+                if (elPairedStream) elPairedStream.textContent = 'Disconnected';
+                if ($('paired-device-count')) $('paired-device-count').textContent = '0';
+                console.log('[Dashboard] Phone disconnected:', info);
+            };
+
+            // --- Device unpaired ---
+            pairingClient.onDeviceUnpaired = () => {
+                resetVideoUI('Device unpaired.');
+                closePeerConnection();
+                awaitingOffer = true;
+                if ($('paired-device-count')) $('paired-device-count').textContent = '0';
+            };
+
+            pairingClient.onCameraReady = (settings) => {
+                awaitingOffer = true;
+                if (elPairedStream) {
+                    const width = settings.width || '?';
+                    const height = settings.height || '?';
+                    elPairedStream.textContent = `Camera ready (${width} × ${height})`;
+                }
+            };
+
+            // --- Stream started/stopped ---
+            pairingClient.onStreamStarted = () => {
+                if (elPairedStream) elPairedStream.textContent = 'Remote video connected';
+            };
+            pairingClient.onStreamStopped = () => {
+                resetVideoUI('Phone stopped streaming. Tap "Start Streaming" on phone to resume.');
+                closePeerConnection();
+                if (elPairedStream) elPairedStream.textContent = 'Stopped';
+                $('btn-stop-stream').style.display = 'none';
+            };
+
+            // --- WebRTC signaling from phone ---
+            pairingClient.onOfferReceived = (offer, fromDeviceId) => {
+                handleOfferFromPhone(offer, fromDeviceId);
+            };
+
+            pairingClient.onIceCandidateReceived = (candidate) => {
+                addIceCandidateSafely(candidate);
+            };
+
+            // --- Code expired ---
+            pairingClient.onCodeExpired = () => {
+                elExpiredBanner.style.display = 'flex';
+                elPairingCode.textContent = 'EXPIRED';
+                console.log('[Pairing] Code expired');
+            };
+
+            // --- Errors ---
+            pairingClient.onError = (err) => {
+                console.error('[Dashboard] Server error:', err);
+                const alert = $('dashboardErrorMessage');
+                if (alert) {
+                    alert.textContent = err.error || 'Signaling error. Check the backend connection and try again.';
+                    alert.style.display = 'block';
+                }
+            };
+
+            // Connect
+            pairingClient.connect().then(() => {
+                console.log('[Dashboard] Connected to signaling server and pairing session created');
+            }).catch(err => {
+                console.error('[Dashboard] Failed to connect:', err);
+                elWaitingLoading.textContent = 'Connection failed. Check signaling server URL.';
+            });
+        }
+
+        // ====================================================================
+        // BUTTON HANDLERS
+        // ====================================================================
+        function setupButtons() {
+            // Unpair
+            const btnUnpair = $('btn-unpair');
+            if (btnUnpair) {
+                btnUnpair.addEventListener('click', () => {
+                    if (pairingClient && confirm('Unpair this device? The phone will lose streaming access.')) {
+                        pairingClient.unpair();
+                        resetVideoUI('Device unpaired.');
+                        closePeerConnection();
+                    }
+                });
+            }
+
+            // Stop streaming
+            const btnStopStream = $('btn-stop-stream');
+            if (btnStopStream) {
+                btnStopStream.addEventListener('click', () => {
+                    if (pairingClient && !pairingClient.sendStreamStopped()) {
+                        console.error('[Dashboard] Could not tell the phone to stop streaming');
+                    }
+                    closePeerConnection();
+                    resetVideoUI('Stream stopped by dashboard.');
+                    pairingClient && pairingClient.setState('PAIRED');
+                    btnStopStream.style.display = 'none';
+                    if (elPairedStream) elPairedStream.textContent = 'Stopped';
+                    updateStateBadge('PAIRED');
+                    updateCameraStatusBadge('PAIRED');
+                });
+            }
+
+            // Regenerate code
+            const btnRegen = $('btn-regenerate-code');
+            if (btnRegen) {
+                btnRegen.addEventListener('click', () => {
+                    if (pairingClient) {
+                        pairingClient.disconnect();
+                        pairingClient = null;
+                    }
+                    // Reset UI
+                    elExpiredBanner.style.display = 'none';
+                    elWaitingLoading.style.display = 'flex';
+                    elWaitingContent.style.display = 'none';
+                    const qrCanvas = $('qr-canvas');
+                    const qrPlaceholder = $('qr-placeholder');
+                    if (qrCanvas) qrCanvas.style.display = 'none';
+                    if (qrPlaceholder) { qrPlaceholder.style.display = 'flex'; qrPlaceholder.textContent = 'Generating QR...'; }
+                    initPairingClient();
+                });
+            }
+
+            // Pair new after disconnect
+            ['btn-pair-new-after-disconnect', 'btn-pair-new-after-unpair'].forEach(btnId => {
+                const btn = $(btnId);
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        if (pairingClient) {
+                            pairingClient.disconnect();
+                            pairingClient = null;
+                        }
+                        closePeerConnection();
+                        showPanel('panel-waiting');
+                        elWaitingLoading.style.display = 'flex';
+                        elWaitingContent.style.display = 'none';
+                        updateStateBadge('CONNECTING');
+                        initPairingClient();
+                    });
+                }
+            });
+
+            // Reconnect button
+            const btnReconnect = $('btn-reconnect');
+            if (btnReconnect) {
+                btnReconnect.addEventListener('click', () => {
+                    if (pairingClient && pairingClient.isPaired()) {
+                        closePeerConnection();
+                        awaitingOffer = true;
+                        pairingClient.requestOffer();
+                        resetVideoUI('Requesting stream from phone...');
+                    }
+                });
+            }
+
+            // Request offer
+            const btnRequestOffer = $('btn-request-offer');
+            if (btnRequestOffer) {
+                btnRequestOffer.addEventListener('click', () => {
+                    if (pairingClient && pairingClient.isPaired()) {
+                        closePeerConnection();
+                        awaitingOffer = true;
+                        pairingClient.requestOffer();
+                    }
+                });
+            }
+
+            // Fullscreen
+            const btnFullscreen = $('btn-fullscreen');
+            const streamContainer = $('video-stream-container-01');
+            if (btnFullscreen && streamContainer) {
+                btnFullscreen.addEventListener('click', () => {
+                    if (!document.fullscreenElement) {
+                        streamContainer.requestFullscreen().catch(e => console.warn('Fullscreen failed:', e));
+                    } else {
+                        document.exitFullscreen();
+                    }
+                });
+            }
+
+            // Mute
+            const btnMute = $('btn-mute');
+            if (btnMute && elRemoteVideo) {
+                btnMute.addEventListener('click', () => {
+                    elRemoteVideo.muted = !elRemoteVideo.muted;
+                    btnMute.textContent = elRemoteVideo.muted ? 'Unmute' : 'Mute';
+                });
+            }
+        }
+
+        // ====================================================================
+        // INIT
+        // ====================================================================
+        function init() {
+            showPanel('panel-waiting');
+            updateStateBadge('CONNECTING');
+            setupButtons();
+            initPairingClient();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+    </script>
 </body>
 </html>

@@ -16,7 +16,7 @@
     const DEFAULT_CONFIG = {
         // In local development: ws://localhost:8080/ws
         // In production on HTTPS: replace or configure via window.ENV_CONFIG or query param ?ws=wss://...
-        DEFAULT_WS_URL: 'ws://localhost:8080/ws',
+        DEFAULT_WS_URL: '',
         DEFAULT_SESSION_ID: 'default-session',
         STUN_SERVERS: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -61,16 +61,12 @@
         const hostname = window.location.hostname;
 
         // If running locally or on local LAN IP (e.g., 192.168.x.x)
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return `ws://${hostname}:8080/ws`;
-        }
-
         if (hostname.match(/^192\.168\./) || hostname.match(/^10\./) || hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
             return `${isHttps ? 'wss:' : 'ws:'}//${hostname}:8080/ws`;
         }
 
         // 5. If deployed on Vercel without env, check if production backend domain is defined
-        // Otherwise default to secure WebSocket template
+        // Production deployments must explicitly configure their WSS backend.
         return DEFAULT_CONFIG.DEFAULT_WS_URL;
     }
 
@@ -96,5 +92,5 @@
         }
     };
 
-    console.log('[Config] Active Signaling URL:', resolveSignalingUrl());
+    console.log('[Config] Signaling URL:', resolveSignalingUrl() || 'not configured');
 })();

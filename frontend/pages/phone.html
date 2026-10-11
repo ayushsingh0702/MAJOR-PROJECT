@@ -3,9 +3,332 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Phone Camera Live Capture Interface - Women Safety">
+    <meta name="description" content="Phone Camera Live Capture - Women Safety">
     <title>Live Camera - Women Safety</title>
     <link rel="stylesheet" href="../css/style.css">
+    <style>
+        /* ============================================================
+         * Phone Pairing & Streaming Styles
+         * ============================================================ */
+
+        /* Pairing Input Panel */
+        .pairing-input-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 28px 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(12px);
+        }
+
+        .pairing-input-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .pairing-input-subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 22px;
+        }
+
+        .code-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .code-input {
+            flex: 1;
+            background: rgba(255,255,255,0.04);
+            border: 1.5px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            padding: 14px 16px;
+            text-align: center;
+            text-transform: uppercase;
+            font-family: var(--font-family);
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .code-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+
+        .code-input::placeholder {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-pair-connect {
+            background: linear-gradient(135deg, var(--primary), #4f46e5);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: 14px 24px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+            box-shadow: 0 4px 15px rgba(99,102,241,0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-pair-connect:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+        }
+
+        .btn-pair-connect:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .pairing-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .pairing-divider::before, .pairing-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+
+        .pairing-divider-text {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* Connecting spinner */
+        .pairing-connecting-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            padding: 20px 0;
+        }
+
+        .pairing-spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(99,102,241,0.15);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Success panel */
+        .paired-success-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .paired-success-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 22px;
+            background: rgba(16,185,129,0.06);
+            border: 1px solid rgba(16,185,129,0.2);
+            border-radius: var(--radius-md);
+            margin-bottom: 18px;
+        }
+
+        .paired-check-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(16,185,129,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border: 2px solid rgba(16,185,129,0.3);
+        }
+
+        .paired-header-text h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--success);
+            margin-bottom: 2px;
+        }
+
+        .paired-header-text p {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .paired-info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.84rem;
+        }
+
+        .paired-info-row:last-child {
+            border-bottom: none;
+        }
+
+        .paired-info-key {
+            color: var(--text-muted);
+        }
+
+        .paired-info-val {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        /* Error panel */
+        .pairing-error-panel {
+            background: rgba(239,68,68,0.06);
+            border: 1px solid rgba(239,68,68,0.2);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            color: var(--danger);
+            font-size: 0.85rem;
+            margin-top: 12px;
+            display: none;
+        }
+
+        .pairing-error-panel.visible {
+            display: block;
+        }
+
+        /* Streaming action buttons */
+        .streaming-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .btn-start-streaming {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(16,185,129,0.3);
+        }
+
+        .btn-start-streaming:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(16,185,129,0.4);
+        }
+
+        .btn-start-streaming:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-stop-streaming {
+            background: rgba(239,68,68,0.08);
+            color: var(--danger);
+            border: 1.5px solid rgba(239,68,68,0.3);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-stop-streaming:hover:not(:disabled) {
+            background: rgba(239,68,68,0.15);
+        }
+
+        .btn-stop-streaming:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-unpair-device {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            grid-column: span 2;
+            margin-top: 4px;
+        }
+
+        .btn-unpair-device:hover {
+            color: var(--danger);
+            border-color: rgba(239,68,68,0.3);
+        }
+
+        /* Phone panels */
+        .phone-panel { display: none; }
+        .phone-panel.active { display: block; }
+
+        /* Status bar */
+        .phone-pairing-status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background: rgba(99,102,241,0.05);
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(99,102,241,0.15);
+            margin-bottom: 16px;
+            font-size: 0.82rem;
+        }
+
+        .phone-pairing-status-label {
+            color: var(--text-muted);
+        }
+
+        .phone-pairing-status-value {
+            font-weight: 700;
+            color: var(--primary);
+        }
+    </style>
 </head>
 <body>
     <div class="container phone-container">
@@ -21,7 +344,7 @@
             </a>
             <div class="nav-links">
                 <a href="../index.html" class="nav-link" id="nav-back-home">
-                    &larr; Back to Home
+                    &larr; Back
                 </a>
             </div>
         </header>
@@ -33,22 +356,132 @@
                 <p class="page-subtitle">Mobile Camera Streaming Node</p>
             </div>
 
+            <!-- ============================================================
+                 PANEL 1: PAIRING INPUT (initial state)
+                 ============================================================ -->
+            <div id="phone-panel-pair" class="phone-panel active">
+                <div class="pairing-input-panel">
+                    <div class="pairing-input-title">Connect to Dashboard</div>
+                    <div class="pairing-input-subtitle">Enter the pairing code shown on your laptop dashboard, or scan the QR code.</div>
+
+                    <!-- Code input -->
+                    <div style="margin-bottom: 14px;">
+                        <label for="pairingCodeInput" style="display:block; font-size:0.78rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px;">Pairing Code</label>
+                        <input
+                            id="pairingCodeInput"
+                            type="text"
+                            class="code-input"
+                            maxlength="7"
+                            placeholder="ABC-123"
+                            autocomplete="off"
+                            autocorrect="off"
+                            spellcheck="false"
+                            inputmode="text"
+                        />
+                    </div>
+
+                    <button id="btn-pair-connect" class="btn-pair-connect">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        Connect to Dashboard
+                    </button>
+
+                    <!-- Error display -->
+                    <div id="pairing-error-display" class="pairing-error-panel"></div>
+
+                    <!-- QR hint -->
+                    <div class="pairing-divider"><span class="pairing-divider-text">or scan QR on dashboard</span></div>
+                    <div style="text-align:center; font-size:0.8rem; color:var(--text-muted);">
+                        Open the laptop dashboard, then scan the QR code with your phone camera app to auto-fill the code.
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================
+                 PANEL 2: CONNECTING (while pairing request is in flight)
+                 ============================================================ -->
+            <div id="phone-panel-connecting" class="phone-panel">
+                <div class="pairing-input-panel">
+                    <div class="pairing-connecting-state">
+                        <div class="pairing-spinner"></div>
+                        <div style="font-size:1rem; font-weight:600; color:var(--text-primary);">Connecting...</div>
+                        <div style="font-size:0.83rem; color:var(--text-muted);">Verifying pairing code with server</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================
+                 PANEL 3: PAIRED (after successful pairing)
+                 ============================================================ -->
+            <div id="phone-panel-paired" class="phone-panel">
+                <!-- Pairing success header -->
+                <div class="pairing-input-panel" style="margin-bottom:20px;">
+                    <div class="paired-success-panel">
+                        <div class="paired-success-header">
+                            <div class="paired-check-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </div>
+                            <div class="paired-header-text">
+                                <h3>Paired Successfully!</h3>
+                                <p>You are connected to the laptop dashboard</p>
+                            </div>
+                        </div>
+
+                        <div id="pairing-info-rows">
+                            <div class="paired-info-row">
+                                <span class="paired-info-key">Dashboard ID</span>
+                                <span class="paired-info-val" id="ph-dashboard-id">—</span>
+                            </div>
+                            <div class="paired-info-row">
+                                <span class="paired-info-key">Session</span>
+                                <span class="paired-info-val" id="ph-session-id">—</span>
+                            </div>
+                            <div class="paired-info-row">
+                                <span class="paired-info-key">Paired At</span>
+                                <span class="paired-info-val" id="ph-paired-at">—</span>
+                            </div>
+                            <div class="paired-info-row">
+                                <span class="paired-info-key">Stream Status</span>
+                                <span class="paired-info-val" id="ph-stream-status">Camera Off</span>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="streaming-actions">
+                            <button id="btn-start-streaming" class="btn-start-streaming">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                Start Streaming
+                            </button>
+                            <button id="btn-stop-streaming" class="btn-stop-streaming" disabled>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                                Stop Streaming
+                            </button>
+                            <button id="btn-unpair-device" class="btn-unpair-device">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Unpair / Disconnect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================
+                 SHARED: Camera preview (visible during/after pairing)
+                 ============================================================ -->
             <div class="glass-card camera-card-wrapper" id="camera-card-container">
                 <!-- Status Indicators Bar -->
                 <div class="camera-status-bar">
                     <div class="status-labels">
-                        <span class="camera-status-label">Status:</span>
+                        <span class="camera-status-label">Camera:</span>
                         <span id="cameraStatus" class="camera-status status-offline">● Camera Offline</span>
                     </div>
                     <div class="status-badges">
                         <span class="camera-status-label" style="font-size: 0.8rem; color: var(--text-muted);">Connection:</span>
-                        <span id="connectionStatus" class="badge status-waiting">Waiting</span>
+                        <span id="connectionStatus" class="badge status-waiting">Not Paired</span>
                     </div>
                 </div>
 
                 <!-- Large Camera Preview Area -->
                 <div class="camera-preview-container" id="camera-preview-box">
-                    <!-- Before the camera starts, display: "Camera is not started" -->
                     <div class="camera-preview-placeholder" id="cameraPlaceholder">
                         <div class="placeholder-icon-circle">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
@@ -57,17 +490,10 @@
                                 <line x1="1" y1="1" x2="23" y2="23"></line>
                             </svg>
                         </div>
-                        <span class="placeholder-text">Camera is not started</span>
-                        <span class="placeholder-hint">Click &quot;Start Camera&quot; below to allow permission and stream via WebRTC</span>
+                        <span class="placeholder-text" id="camera-placeholder-text">Pair with dashboard first</span>
+                        <span class="placeholder-hint">Pair your device, then tap Start Streaming to begin</span>
                     </div>
-
-                    <!-- Required Video Element -->
-                    <video
-                        id="cameraPreview"
-                        autoplay
-                        playsinline
-                        muted>
-                    </video>
+                    <video id="cameraPreview" autoplay playsinline muted></video>
                 </div>
 
                 <!-- Telemetry Metrics Bar -->
@@ -75,31 +501,15 @@
                     <div class="stream-stats">
                         <div class="stat-item"><span>Resolution:</span> <strong id="cameraResolutionDisplay">--</strong></div>
                         <div class="stat-item"><span>FPS:</span> <strong id="cameraFpsDisplay">--</strong></div>
-                        <div class="stat-item"><span>Connection quality:</span> <strong id="cameraQualityDisplay">--</strong></div>
+                        <div class="stat-item"><span>Quality:</span> <strong id="cameraQualityDisplay">--</strong></div>
                     </div>
                     <div class="stream-tag">
-                        <span>Device: Phone 1</span>
+                        <span id="phone-device-id-tag">Device: Unpaired</span>
                     </div>
                 </div>
 
                 <!-- Error Message Area -->
                 <div id="errorMessage" class="error-message-box" role="alert" style="display: none;"></div>
-
-                <!-- Action Buttons -->
-                <div class="camera-controls-grid">
-                    <button type="button" class="btn btn-primary btn-camera" id="startBtn">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                        </svg>
-                        Start Camera
-                    </button>
-                    <button type="button" class="btn btn-danger btn-camera" id="stopBtn" disabled>
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
-                            <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-                        </svg>
-                        Stop Camera
-                    </button>
-                </div>
 
                 <!-- Collapsible Diagnostics -->
                 <details class="debug-panel" id="phone-debug-panel">
@@ -121,11 +531,26 @@
                             <span class="debug-val" id="debugICE">new</span>
                         </div>
                         <div class="debug-item">
-                            <span class="debug-label">Signaling:</span>
-                            <span class="debug-val" id="debugSignaling">Spring Boot WebSocket (/ws)</span>
+                            <span class="debug-label">Pairing:</span>
+                            <span class="debug-val" id="debugPairing">Not paired</span>
                         </div>
                     </div>
                 </details>
+            </div>
+
+            <!-- ============================================================
+                 PANEL 4: UNPAIRED / ERROR
+                 ============================================================ -->
+            <div id="phone-panel-unpaired" class="phone-panel">
+                <div class="pairing-input-panel" style="text-align:center;">
+                    <div style="font-size:2rem; margin-bottom:12px;">⚠️</div>
+                    <div style="font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:8px;" id="unpaired-title">Device Unpaired</div>
+                    <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:20px;" id="unpaired-reason">The dashboard has unpaired this device.</div>
+                    <button id="btn-pair-again" class="btn-pair-connect">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        Pair Again
+                    </button>
+                </div>
             </div>
         </main>
 
@@ -137,8 +562,653 @@
 
     <!-- Scripts -->
     <script src="../js/config.js"></script>
-    <script src="../js/websocket.js"></script>
-    <script src="../js/camera.js"></script>
-    <script src="../js/webrtc.js"></script>
+    <script src="../js/pairing.js"></script>
+
+    <script>
+    /**
+     * Phone Pairing + Camera + WebRTC Controller
+     */
+    (function () {
+        'use strict';
+
+        const RTC_CONFIG = {
+            iceServers: window.WomenSafetyConfig
+                ? window.WomenSafetyConfig.getStunServers()
+                : [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        // State
+        let pairingClient = null;
+        let peerConnection = null;
+        let localStream = null;
+        let pendingIceCandidates = [];
+        let isNegotiating = false;
+        let isStreaming = false;
+
+        // DOM
+        const $ = id => document.getElementById(id);
+
+        // ====================================================================
+        // PANEL MANAGEMENT
+        // ====================================================================
+        function showPhonePanel(panelId) {
+            ['phone-panel-pair', 'phone-panel-connecting', 'phone-panel-paired', 'phone-panel-unpaired'].forEach(id => {
+                const el = $(id);
+                if (el) el.classList.toggle('active', id === panelId);
+            });
+        }
+
+        function setConnectionStatus(text, cls) {
+            const el = $('connectionStatus');
+            if (el) {
+                el.textContent = text;
+                if (cls) el.className = 'badge ' + cls;
+            }
+        }
+
+        function setCameraStatus(text, cls) {
+            const el = $('cameraStatus');
+            if (el) {
+                el.textContent = text;
+                el.className = 'camera-status ' + (cls || '');
+            }
+        }
+
+        function showError(msg) {
+            const el = $('errorMessage');
+            if (el) {
+                el.textContent = msg;
+                el.style.display = 'block';
+            }
+        }
+
+        function clearError() {
+            const el = $('errorMessage');
+            if (el) { el.textContent = ''; el.style.display = 'none'; }
+        }
+
+        function setPairingError(msg) {
+            const el = $('pairing-error-display');
+            if (el) {
+                el.textContent = msg;
+                el.classList.toggle('visible', !!msg);
+            }
+        }
+
+        function updateDebug(field, val) {
+            const el = $(field);
+            if (el) el.textContent = val;
+        }
+
+        // ====================================================================
+        // QR codes carry the short-lived code in the fragment so it is not sent in HTTP requests.
+        // ====================================================================
+        function checkUrlForPairingCode() {
+            const params = new URLSearchParams(window.location.hash.slice(1));
+            const code = params.get('code');
+            if (!code) return;
+            window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+            const input = $('pairingCodeInput');
+            if (!input) return;
+            input.value = code.trim().toUpperCase();
+            console.log('[Phone] Temporary pairing code received from QR');
+            setTimeout(() => attemptPairing(code.trim()), 300);
+        }
+
+        // ====================================================================
+        // PAIRING FLOW
+        // ====================================================================
+        function attemptPairing(code) {
+            if (pairingClient && ['CONNECTING', 'PAIRING_REQUESTED', 'PAIRED', 'CAMERA_READY', 'STREAMING'].includes(pairingClient.state)) {
+                return;
+            }
+            if (!code || !code.trim()) {
+                setPairingError('Please enter the pairing code from the dashboard.');
+                return;
+            }
+            setPairingError('');
+            showPhonePanel('phone-panel-connecting');
+
+            // Initialize PhonePairingClient
+            if (pairingClient) pairingClient.disconnect();
+            pairingClient = new PhonePairingClient({
+                signalingUrl: window.WomenSafetyConfig.getSignalingUrl(),
+                deviceId: 'phone-' + Math.random().toString(36).substring(2, 8)
+            });
+
+            pairingClient.onStateChange = (state) => {
+                updateDebug('debugPairing', state);
+                if (state === 'PAIRED') {
+                    setConnectionStatus('● Paired', 'status-connected');
+                } else if (state === 'STREAMING') {
+                    setConnectionStatus('● Streaming', 'status-connected');
+                    $('ph-stream-status').textContent = 'STREAMING';
+                } else if (state === 'UNPAIRED') {
+                    setConnectionStatus('Unpaired', 'status-waiting');
+                }
+            };
+
+            pairingClient.onPairingApproved = (info) => {
+                console.log('[Phone] Pairing approved');
+                showPhonePanel('phone-panel-paired');
+                setConnectionStatus('● Paired', 'status-connected');
+                $('camera-placeholder-text').textContent = 'Tap Start Streaming';
+
+                // Update info display
+                $('ph-dashboard-id').textContent = info.dashboardDeviceId || '—';
+                $('ph-session-id').textContent = info.pairingSessionId ? info.pairingSessionId.substring(0,12) + '...' : '—';
+                $('ph-paired-at').textContent = info.pairedAt ? new Date(info.pairedAt).toLocaleTimeString() : '—';
+                $('ph-stream-status').textContent = 'Camera Off';
+                $('phone-device-id-tag').textContent = 'Device: ' + pairingClient.deviceId;
+
+                pairingClient.startHeartbeat();
+            };
+
+            pairingClient.onPairingRejected = (info) => {
+                console.warn('[Phone] Pairing rejected:', info.errorCode, info.reason);
+                showPhonePanel('phone-panel-pair');
+                const msgs = {
+                    'EXPIRED': 'Pairing code has expired. Please generate a new code on the dashboard.',
+                    'INVALID_CODE': 'Invalid pairing code. Check the code on your dashboard.',
+                    'CODE_CONSUMED': 'This pairing code has already been used. Generate a new one.',
+                    'RATE_LIMITED': 'Too many failed attempts. Please generate a new pairing code.',
+                    'SESSION_BUSY': 'This pairing session is already in use.',
+                    'DASHBOARD_DISCONNECTED': 'Dashboard is no longer connected.'
+                };
+                setPairingError(msgs[info.errorCode] || info.reason || 'Pairing failed. Try again.');
+                setConnectionStatus('Error', 'badge-disconnected');
+            };
+
+            pairingClient.onDeviceUnpaired = (info) => {
+                console.log('[Phone] Unpaired by dashboard');
+                stopStreaming(true);
+                $('unpaired-title').textContent = 'Device Unpaired';
+                $('unpaired-reason').textContent = 'The dashboard has unpaired this device. Pair again to resume.';
+                showPhonePanel('phone-panel-unpaired');
+                setConnectionStatus('Unpaired', 'status-waiting');
+            };
+
+            pairingClient.onDisconnected = (info) => {
+                stopStreaming(true);
+                pairingClient = null;
+                showPhonePanel('phone-panel-pair');
+                setPairingError(info.reason || 'The dashboard connection was lost. Pair again to continue.');
+                setConnectionStatus('Disconnected', 'badge-disconnected');
+            };
+
+            pairingClient.onStreamStopped = () => {
+                stopStreaming(true);
+                $('ph-stream-status').textContent = 'Camera Off';
+            };
+
+            pairingClient.onAnswerReceived = async (answer) => {
+                console.log('[WebRTC] ANSWER received from dashboard');
+                if (peerConnection) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        console.log('[WebRTC] Remote description set');
+                        await flushPendingIceCandidates();
+                    } catch (err) {
+                        console.error('[WebRTC] Error setting remote description:', err);
+                    }
+                }
+            };
+
+            pairingClient.onIceCandidateReceived = async (candidate) => {
+                await addIceCandidateSafely(candidate);
+            };
+
+            pairingClient.onRequestOffer = () => {
+                console.log('[WebRTC] Dashboard requested fresh offer');
+                if (localStream && isStreaming) {
+                    initiateOffer();
+                }
+            };
+
+            pairingClient.onError = (err) => {
+                console.error('[Phone] Server error:', err);
+                if (['UNAUTHORIZED', 'NOT_PAIRED', 'INVALID_STATE', 'WS_NOT_READY', 'WS_SEND_FAILED'].includes(err.errorCode)) {
+                    showError('Authorization lost. Please re-pair your device.');
+                    stopStreaming(true);
+                    if (err.errorCode === 'UNAUTHORIZED' || err.errorCode === 'NOT_PAIRED') {
+                        showPhonePanel('phone-panel-pair');
+                    }
+                }
+            };
+
+            // Connect and pair
+            pairingClient.connect()
+                .then(() => {
+                    pairingClient.joinPairingSession(code);
+                })
+                .catch(err => {
+                    console.error('[Phone] Connection failed:', err);
+                    showPhonePanel('phone-panel-pair');
+                    setPairingError('Cannot reach the signaling server. Check your internet connection.');
+                });
+        }
+
+        // ====================================================================
+        // CAMERA ACQUISITION (preserved from original camera.js logic)
+        // ====================================================================
+        async function acquireCameraStream() {
+            const primaryConstraints = {
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    frameRate: { ideal: 30, max: 30 }
+                },
+                audio: false
+            };
+            const fallback720 = {
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30, max: 30 }
+                },
+                audio: false
+            };
+            const standard = {
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false
+            };
+
+            try {
+                return await navigator.mediaDevices.getUserMedia(primaryConstraints);
+            } catch (e1) {
+                console.warn('[Camera] 1080p failed, trying 720p:', e1.name);
+                try {
+                    return await navigator.mediaDevices.getUserMedia(fallback720);
+                } catch (e2) {
+                    console.warn('[Camera] 720p failed, trying standard:', e2.name);
+                    return await navigator.mediaDevices.getUserMedia(standard);
+                }
+            }
+        }
+
+        async function startStreaming() {
+            if (!pairingClient || !pairingClient.isPaired()) {
+                showError('Cannot start streaming: device is not paired. Pair with a dashboard first.');
+                return;
+            }
+
+            clearError();
+            $('btn-start-streaming').disabled = true;
+            setCameraStatus('Initializing Camera...', 'status-offline');
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError('Camera not available. This page requires HTTPS.');
+                $('btn-start-streaming').disabled = false;
+                return;
+            }
+
+            try {
+                const stream = await acquireCameraStream();
+                localStream = stream;
+
+                // Show camera preview
+                const preview = $('cameraPreview');
+                const placeholder = $('cameraPlaceholder');
+                if (preview) {
+                    preview.srcObject = stream;
+                    preview.style.display = 'block';
+                    try { await preview.play(); } catch (e) {}
+                }
+                if (placeholder) placeholder.style.display = 'none';
+
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                    const w = settings.width || '?';
+                    const h = settings.height || '?';
+                    const fps = Math.round(settings.frameRate || 30);
+                    console.log(`[Camera] Stream acquired: ${w}×${h} @ ${fps}fps`);
+                    $('cameraResolutionDisplay').textContent = `${w} × ${h}`;
+                    $('cameraFpsDisplay').textContent = `${fps} FPS`;
+                    $('cameraQualityDisplay').textContent = h >= 1080 ? 'Excellent' : (h >= 720 ? 'Good' : 'Standard');
+                    updateDebug('debugCamera', `${w}×${h} @ ${fps}fps`);
+
+                    videoTrack.addEventListener('ended', () => {
+                        console.log('[Camera] Track ended');
+                        stopStreaming(false);
+                    });
+                }
+
+                setCameraStatus('● Camera Ready', 'status-active');
+                isStreaming = true;
+                $('ph-stream-status').textContent = 'Starting WebRTC...';
+                $('btn-stop-streaming').disabled = false;
+                $('btn-start-streaming').disabled = true;
+
+                // Server records camera readiness separately from an established WebRTC stream.
+                const settings = videoTrack && videoTrack.getSettings ? videoTrack.getSettings() : {};
+                if (!pairingClient.sendCameraReady(settings)) {
+                    throw new Error('Signaling is not ready. Reconnect and pair again before streaming.');
+                }
+
+                // Start WebRTC offer
+                await initiateOffer();
+
+            } catch (err) {
+                console.error('[Camera] Error:', err);
+                if (localStream) stopStreaming(true);
+                $('btn-start-streaming').disabled = false;
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    showError('Camera permission denied. Please allow camera access and try again.');
+                    setCameraStatus('● Permission Denied', 'status-offline');
+                } else if (err.name === 'NotFoundError') {
+                    showError('No camera found on this device.');
+                    setCameraStatus('● No Camera Found', 'status-offline');
+                } else {
+                    showError('Camera error: ' + (err.message || 'Unknown error'));
+                    setCameraStatus('● Camera Error', 'status-offline');
+                }
+            }
+        }
+
+        function stopStreaming(silent = false) {
+            isStreaming = false;
+
+            // Stop camera tracks
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+
+            // Clear preview
+            const preview = $('cameraPreview');
+            const placeholder = $('cameraPlaceholder');
+            if (preview) { preview.srcObject = null; preview.style.display = 'none'; }
+            if (placeholder) placeholder.style.display = 'flex';
+
+            // Close WebRTC
+            closePeerConnection();
+
+            // Notify server
+            if (!silent && pairingClient && pairingClient.isPaired()) {
+                pairingClient.sendStreamStopped();
+            }
+
+            setCameraStatus('● Camera Offline', 'status-offline');
+            setConnectionStatus('Paired', 'status-connected');
+            $('ph-stream-status').textContent = 'Camera Off';
+            $('btn-stop-streaming').disabled = true;
+            $('btn-start-streaming').disabled = false;
+            updateDebug('debugCamera', 'Stopped');
+            updateDebug('debugWebRTC', 'Connection: Waiting');
+            updateDebug('debugICE', 'new');
+
+            $('cameraResolutionDisplay').textContent = '--';
+            $('cameraFpsDisplay').textContent = '--';
+            $('cameraQualityDisplay').textContent = '--';
+        }
+
+        // ====================================================================
+        // WEBRTC
+        // ====================================================================
+        function createPeerConnection() {
+            if (peerConnection && peerConnection.connectionState !== 'closed') {
+                closePeerConnection();
+            }
+
+            console.log('[WebRTC] Creating phone PeerConnection');
+            peerConnection = new RTCPeerConnection(RTC_CONFIG);
+            pendingIceCandidates = [];
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate && pairingClient) {
+                    pairingClient.sendIceCandidate(event.candidate);
+                    console.log('[ICE] Candidate sent to dashboard');
+                } else if (!event.candidate) {
+                    console.log('[ICE] Gathering complete');
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                const state = peerConnection ? peerConnection.connectionState : 'closed';
+                console.log(`[WebRTC] Connection state = ${state}`);
+                updateDebug('debugWebRTC', 'Connection: ' + state);
+
+                if (state === 'connected') {
+                    setConnectionStatus('● WebRTC Connected', 'status-connected');
+                    $('ph-stream-status').textContent = 'Connected; waiting for dashboard video confirmation';
+                } else if (state === 'failed') {
+                    console.warn('[WebRTC] Connection failed');
+                    setConnectionStatus('Connection Failed', 'badge-disconnected');
+                } else if (state === 'disconnected') {
+                    setConnectionStatus('Connection Lost', 'status-waiting');
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
+                console.log(`[WebRTC] ICE state = ${iceState}`);
+                updateDebug('debugICE', iceState);
+            };
+
+            return peerConnection;
+        }
+
+        async function initiateOffer() {
+            if (!localStream) {
+                console.warn('[WebRTC] No local stream for offer');
+                return;
+            }
+            if (!pairingClient || !pairingClient.isPaired()) {
+                console.warn('[WebRTC] Not paired, cannot send offer');
+                return;
+            }
+            if (!pairingClient.isConnected || !pairingClient.ws || pairingClient.ws.readyState !== WebSocket.OPEN) {
+                throw new Error('Signaling WebSocket is not ready. Reconnect and pair again.');
+            }
+            if (isNegotiating) {
+                console.warn('[WebRTC] Negotiation already in progress');
+                return;
+            }
+
+            isNegotiating = true;
+            try {
+                if (peerConnection && peerConnection.signalingState !== 'stable') {
+                    console.warn('[WebRTC] Offer already in progress; ignoring duplicate request');
+                    return;
+                }
+                if (!peerConnection || peerConnection.connectionState === 'closed') {
+                    createPeerConnection();
+                }
+
+                // Add video track
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    const senders = peerConnection.getSenders();
+                    const existing = senders.find(s => s.track && s.track.kind === 'video');
+                    if (!existing) {
+                        peerConnection.addTrack(videoTrack, localStream);
+                        console.log('[WebRTC] Video track added');
+
+                        // Configure encoding for quality
+                        await configureSenderParams(peerConnection, videoTrack);
+                    }
+                }
+
+                console.log('[WebRTC] Creating offer');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                console.log('[WebRTC] Local description set, sending offer');
+
+                if (!pairingClient.sendOffer(offer)) {
+                    throw new Error('Unable to send the WebRTC offer over signaling');
+                }
+
+            } catch (err) {
+                console.error('[WebRTC] Offer error:', err);
+                showError('WebRTC error: ' + err.message);
+            } finally {
+                isNegotiating = false;
+            }
+        }
+
+        async function configureSenderParams(pc, videoTrack) {
+            try {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (!sender || !sender.getParameters) return;
+                const params = sender.getParameters();
+                if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+                const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                const h = settings.height || 720;
+                params.encodings[0].maxBitrate = h >= 1080 ? 4500000 : (h >= 720 ? 2500000 : 1200000);
+                params.encodings[0].maxFramerate = 30;
+                await sender.setParameters(params);
+                console.log('[WebRTC] Sender params configured');
+            } catch (e) {
+                console.warn('[WebRTC] Sender params (non-critical):', e.message);
+            }
+        }
+
+        async function addIceCandidateSafely(candidate) {
+            if (!candidate) return;
+            if (!peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
+                pendingIceCandidates.push(candidate);
+                return;
+            }
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (e) {
+                console.warn('[WebRTC] ICE candidate error:', e);
+                pendingIceCandidates.push(candidate);
+            }
+        }
+
+        async function flushPendingIceCandidates() {
+            if (!peerConnection || !peerConnection.remoteDescription) return;
+            while (pendingIceCandidates.length > 0) {
+                const c = pendingIceCandidates.shift();
+                try { await peerConnection.addIceCandidate(new RTCIceCandidate(c)); }
+                catch (e) { console.warn('[ICE] Queued candidate error:', e); }
+            }
+        }
+
+        function closePeerConnection() {
+            if (peerConnection) {
+                peerConnection.ontrack = null;
+                peerConnection.onicecandidate = null;
+                peerConnection.onconnectionstatechange = null;
+                peerConnection.oniceconnectionstatechange = null;
+                try { peerConnection.close(); } catch (e) {}
+                peerConnection = null;
+                console.log('[WebRTC] PeerConnection closed');
+            }
+            pendingIceCandidates = [];
+            isNegotiating = false;
+        }
+
+        // ====================================================================
+        // BUTTON HANDLERS
+        // ====================================================================
+        function setupButtons() {
+            // Pair Connect button
+            const btnConnect = $('btn-pair-connect');
+            if (btnConnect) {
+                btnConnect.addEventListener('click', () => {
+                    const code = $('pairingCodeInput').value.trim();
+                    attemptPairing(code);
+                });
+            }
+
+            // Pairing code input - auto-format and submit on Enter
+            const codeInput = $('pairingCodeInput');
+            if (codeInput) {
+                codeInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        attemptPairing(codeInput.value.trim());
+                    }
+                });
+                codeInput.addEventListener('input', () => {
+                    // Auto-insert hyphen after 3 chars
+                    let val = codeInput.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                    if (val.length > 3) {
+                        val = val.substring(0, 3) + '-' + val.substring(3, 6);
+                    }
+                    codeInput.value = val;
+                });
+            }
+
+            // Start streaming
+            const btnStart = $('btn-start-streaming');
+            if (btnStart) {
+                btnStart.addEventListener('click', () => {
+                    startStreaming();
+                });
+            }
+
+            // Stop streaming
+            const btnStop = $('btn-stop-streaming');
+            if (btnStop) {
+                btnStop.addEventListener('click', () => {
+                    stopStreaming(false);
+                });
+            }
+
+            // Unpair
+            const btnUnpair = $('btn-unpair-device');
+            if (btnUnpair) {
+                btnUnpair.addEventListener('click', () => {
+                    if (confirm('Disconnect from dashboard? You will need to pair again to stream.')) {
+                        stopStreaming(false);
+                        if (pairingClient) {
+                            pairingClient.unpair();
+                            pairingClient.stopHeartbeat();
+                            pairingClient.disconnect();
+                            pairingClient = null;
+                        }
+                        showPhonePanel('phone-panel-pair');
+                        setConnectionStatus('Not Paired', 'status-waiting');
+                        setPairingError('');
+                    }
+                });
+            }
+
+            // Pair again button (unpaired panel)
+            const btnPairAgain = $('btn-pair-again');
+            if (btnPairAgain) {
+                btnPairAgain.addEventListener('click', () => {
+                    if (pairingClient) {
+                        pairingClient.disconnect();
+                        pairingClient = null;
+                    }
+                    showPhonePanel('phone-panel-pair');
+                    setPairingError('');
+                    setConnectionStatus('Not Paired', 'status-waiting');
+                });
+            }
+        }
+
+        // ====================================================================
+        // PAGE UNLOAD
+        // ====================================================================
+        window.addEventListener('beforeunload', () => {
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            if (pairingClient) pairingClient.unpair();
+        });
+
+        // ====================================================================
+        // INIT
+        // ====================================================================
+        function init() {
+            showPhonePanel('phone-panel-pair');
+            setupButtons();
+
+            // Check if QR code auto-filled the pairing code
+            checkUrlForPairingCode();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+    </script>
 </body>
 </html>

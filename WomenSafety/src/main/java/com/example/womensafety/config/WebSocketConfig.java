@@ -8,7 +8,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
 /**
  * Spring Boot WebSocket Configuration for WebRTC signaling.
- * Maps the /ws endpoint and permits all origins for cross-device & cloud deployments (Vercel).
+ * Maps the /ws endpoint for the deployed frontend and local development.
  */
 @Configuration
 @EnableWebSocket
@@ -23,6 +23,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(signalingHandler, "/ws")
-                .setAllowedOriginPatterns("*"); // Supports Vercel frontend, mobile browsers, localhost
+                .setAllowedOriginPatterns(
+                        "https://major-project-frontend-blond.vercel.app",
+                        "http://localhost:*",
+                        "http://127.0.0.1:*");
     }
 }
