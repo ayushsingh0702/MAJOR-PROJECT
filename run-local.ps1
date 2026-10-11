@@ -43,45 +43,21 @@ foreach ($port in $ports.Keys) {
     } while ($stillListening.Count -gt 0)
 }
 
-$backendCommand = '& ".\WomenSafety\mvnw.cmd" -f ".\WomenSafety\pom.xml" spring-boot:run'
 $frontendCommand = 'Set-Location -LiteralPath ".\frontend"; node .\serve.js'
 
 Start-Process -FilePath 'powershell.exe' `
     -WorkingDirectory $projectRoot `
-    -ArgumentList @('-NoExit', '-Command', $backendCommand) | Out-Null
-Start-Process -FilePath 'powershell.exe' `
-    -WorkingDirectory $projectRoot `
     -ArgumentList @('-NoExit', '-Command', $frontendCommand) | Out-Null
 
-Write-Host 'Started backend and frontend in separate PowerShell windows. Waiting for them to become ready...'
-$deadline = (Get-Date).AddSeconds(120)
-$backendReady = $false
+Write-Host 'Frontend server started in a separate PowerShell window.'
+Write-Host 'Starting backend in this terminal. Keep it open while using the app.'
+Write-Host 'After Spring Boot reports that Tomcat started, open http://localhost:3000/pages/dashboard.html'
+
+Set-Location -LiteralPath (Join-Path $projectRoot 'WomenSafety')
+& .\mvnw.cmd spring-boot:run
+if ($LASTEXITCODE -ne 0) {
+    throw "Backend exited with code $LASTEXITCODE. Review the Maven/Spring Boot output above."
+}
+
 $frontendReady = $false
-
-while ((Get-Date) -lt $deadline -and (-not $backendReady -or -not $frontendReady)) {
-    if (-not $backendReady) {
-        try {
-            $statusJson = & curl.exe --silent --show-error --max-time 2 'http://localhost:8080/api/status' 2>$null
-            $backendReady = $LASTEXITCODE -eq 0 -and $statusJson -match '"status"\s*:\s*"UP"'
-        } catch {
-            Start-Sleep -Milliseconds 500
-        }
-    }
-
-    if (-not $frontendReady) {
-        try {
-            $httpStatus = & curl.exe --silent --output NUL --write-out '%{http_code}' --max-time 2 'http://localhost:3000/pages/dashboard.html' 2>$null
-            $frontendReady = $LASTEXITCODE -eq 0 -and $httpStatus -eq '200'
-        } catch {
-            Start-Sleep -Milliseconds 500
-        }
-    }
-}
-
-if (-not $backendReady -or -not $frontendReady) {
-    throw "Startup timed out. Backend ready: $backendReady; frontend ready: $frontendReady. Check the opened PowerShell windows for errors."
-}
-
-Write-Host 'Backend is healthy at http://localhost:8080/api/status'
-Write-Host 'Frontend dashboard is ready at http://localhost:3000/pages/dashboard.html'
-Start-Process 'http://localhost:3000/pages/dashboard.html'
+$frontendReady = $false
