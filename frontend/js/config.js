@@ -1,4 +1,4 @@
-/**
+﻿/**
  * config.js
  * 
  * Application Configuration & Signaling URL Resolution.
@@ -16,7 +16,7 @@
     const DEFAULT_CONFIG = {
         // In local development: ws://localhost:8080/ws
         // In production on HTTPS: replace or configure via window.ENV_CONFIG or query param ?ws=wss://...
-        DEFAULT_WS_URL: '',
+        DEFAULT_WS_URL: 'wss://major-project-o3g3.onrender.com/ws',
         DEFAULT_SESSION_ID: 'default-session',
         STUN_SERVERS: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -94,3 +94,4 @@
 
     console.log('[Config] Signaling URL:', resolveSignalingUrl() || 'not configured');
 })();
+
