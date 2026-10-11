@@ -58,6 +58,3 @@ Set-Location -LiteralPath (Join-Path $projectRoot 'WomenSafety')
 if ($LASTEXITCODE -ne 0) {
     throw "Backend exited with code $LASTEXITCODE. Review the Maven/Spring Boot output above."
 }
-
-$frontendReady = $false
-$frontendReady = $false

@@ -23,13 +23,15 @@ From the repository root, run:
 
 The launcher checks ports 3000 (frontend) and 8080 (backend), stops an existing
 process only if it can identify it as this application's server, then starts
-both servers in separate PowerShell windows and opens the dashboard. It does
+the frontend in a separate PowerShell window and runs the backend in the
+current terminal. Keep the launcher terminal open while using the app. Once
+Spring Boot reports that Tomcat started, open the dashboard URL below. It does
 not clear or stop unrelated ports or processes. If either port belongs to a
 different application, the script stops and reports the conflict instead.
 
-### Terminal 1: Spring Boot backend
+### Spring Boot backend
 
-From the repository root:
+To start the backend by itself, run this from the repository root:
 
 ```powershell
 .\WomenSafety\mvnw.cmd -f WomenSafety\pom.xml spring-boot:run
@@ -42,9 +44,10 @@ backend provides:
 - WebSocket signaling: `ws://localhost:8080/ws`
 - ICE server configuration: `http://localhost:8080/api/ice-servers`
 
-### Terminal 2: frontend
+### Frontend
 
-From the repository root:
+To start the frontend by itself, run this in another PowerShell terminal from
+the repository root:
 
 ```powershell
 Set-Location frontend
