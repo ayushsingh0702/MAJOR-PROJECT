@@ -34,13 +34,21 @@ node serve.js
 
 ---
 
+## Run locally
+
+See [RUNNING.md](./RUNNING.md) for the PowerShell commands to start the backend
+and frontend, run tests, build the backend JAR, and configure optional TURN
+settings.
+
+---
+
 ## Deployed Web Application
 - **Frontend URL**: [https://major-project-frontend-blond.vercel.app](https://major-project-frontend-blond.vercel.app)
 - **Laptop Dashboard**: [https://major-project-frontend-blond.vercel.app/pages/dashboard.html](https://major-project-frontend-blond.vercel.app/pages/dashboard.html)
 - **Phone Pairing Page**: [https://major-project-frontend-blond.vercel.app/pages/phone.html](https://major-project-frontend-blond.vercel.app/pages/phone.html)
 - **Connect Deployed Frontend to Backend**: Open the dashboard with `?ws=wss://YOUR-BACKEND-DOMAIN/ws`. Its QR code carries the backend address and one-time pairing code; for manual phone entry, open the phone URL with the same `?ws=...` parameter.
 - **Secure pairing**: The dashboard issues a two-minute, single-use code. The phone must pair with it and the user must tap **Start Streaming** before camera access and WebRTC negotiation begin. Pairing authorization is held only in page memory and expires when either WebSocket disconnects.
-- **Backend deployment**: Configure the `/ws` endpoint behind HTTPS/WSS, keep port 8080 private behind the tunnel or reverse proxy, and allow the Vercel origin in the WebSocket configuration. The current live pairing store is in-memory, so restarting the backend invalidates active sessions.
+- **Backend deployment**: Configure the `/ws` endpoint behind HTTPS/WSS and keep port 8080 private behind the tunnel or reverse proxy. The backend allows the stable Vercel frontend hostname and generated deployment hostnames by default. Set `WEBSOCKET_ALLOWED_ORIGIN_PATTERNS` to a comma-separated list of allowed browser origins when using a custom domain or a different Vercel project. The current live pairing store is in-memory, so restarting the backend invalidates active sessions.
 - **TURN deployment (required for relay fallback)**: In the Render backend service, set `WEBRTC_TURN_URLS` to comma-separated authenticated TURN endpoints, `WEBRTC_TURN_SHARED_SECRET` to the provider's Coturn REST shared secret, and optionally `WEBRTC_TURN_CREDENTIAL_TTL_SECONDS` (default `3600`, allowed `60`–`86400`). Example URL formats: `turn:turn.example.net:3478?transport=udp` and `turns:turn.example.net:5349?transport=tcp`. The provider must support Coturn REST credentials (username `expiry:random-id`, password HMAC-SHA1/base64). Enable that mode on the TURN service and set the same secret there; do not put a TURN secret or static username/password in Vercel, frontend code, or Git. Render's `/api/ice-servers` generates expiring credentials; the Vercel pages fetch them from the configured signaling backend. If TURN URLs or the secret are absent, the service explicitly returns STUN-only configuration and cross-NAT connectivity is not guaranteed.
 - **Streaming quality/diagnostics**: Capture starts at 720p/30 FPS. The phone adapts bitrate, resolution, and frame rate downward after sustained congestion and steps quality back up more cautiously. The dashboard's Stream Diagnostics show bitrate, packet loss, jitter, RTT, dropped frames, estimated outgoing capacity, ICE gathering, TURN configuration, and network quality. Verify relay operation in browser WebRTC internals or selected ICE candidate stats (`relay`); seeing "Configured" only confirms Render credentials were issued, not that the provider is reachable or selected.
 

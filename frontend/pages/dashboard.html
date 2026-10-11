@@ -409,8 +409,8 @@
 
                                     <div style="font-size:0.78rem; color:var(--text-muted);">
                                         <strong style="color:var(--text-secondary);">Phone URL:</strong>
-                                        <a id="phone-page-url" href="https://major-project-frontend-blond.vercel.app/pages/phone.html" target="_blank" style="color:var(--primary); margin-left:4px; font-size:0.75rem;">
-                                            major-project-frontend-blond.vercel.app/pages/phone.html
+                                        <a id="phone-page-url" href="phone.html" target="_blank" style="color:var(--primary); margin-left:4px; font-size:0.75rem;">
+                                            Open the phone page
                                         </a>
                                     </div>
                                 </div>
@@ -1135,6 +1135,11 @@
                 const phonePageUrl = new URL('phone.html', window.location.href);
                 const signalingUrl = window.WomenSafetyConfig.getSignalingUrl();
                 if (signalingUrl) phonePageUrl.searchParams.set('ws', signalingUrl);
+                const phonePageLink = $('phone-page-url');
+                if (phonePageLink) {
+                    phonePageLink.href = phonePageUrl.href;
+                    phonePageLink.textContent = `${phonePageUrl.host}${phonePageUrl.pathname}`;
+                }
                 generateQR(phonePageUrl.href, info.pairingCode);
                 const count = $('waiting-device-count');
                 if (count) count.textContent = 'Connected / paired devices: 0';
