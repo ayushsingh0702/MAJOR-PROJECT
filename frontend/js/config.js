@@ -25,6 +25,43 @@
         ]
     };
 
+    function getIceConfigurationUrl() {
+        const signalingUrl = new URL(resolveSignalingUrl());
+        signalingUrl.protocol = signalingUrl.protocol === 'wss:' ? 'https:' : 'http:';
+        signalingUrl.pathname = signalingUrl.pathname.replace(/\/ws\/?$/, '') + '/api/ice-servers';
+        signalingUrl.search = '';
+        signalingUrl.hash = '';
+        return signalingUrl.href;
+    }
+
+    async function resolveIceConfiguration() {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+            const response = await fetch(getIceConfigurationUrl(), {
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            if (!response.ok) {
+                throw new Error(`ICE configuration request failed (${response.status})`);
+            }
+            const configuration = await response.json();
+            if (!Array.isArray(configuration.iceServers) || configuration.iceServers.length === 0) {
+                throw new Error('Signaling backend returned an invalid ICE server configuration');
+            }
+            return configuration;
+        } catch (error) {
+            console.warn('[Config] Could not load authenticated TURN configuration; using STUN only:', error.message);
+            return {
+                iceServers: DEFAULT_CONFIG.STUN_SERVERS,
+                turnConfigured: false,
+                error: error.message
+            };
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
     /**
      * Resolves the WebRTC signaling WebSocket URL dynamically.
      */
@@ -89,9 +126,9 @@
         },
         getStunServers: function () {
             return DEFAULT_CONFIG.STUN_SERVERS;
-        }
+        },
+        getIceConfiguration: resolveIceConfiguration
     };
 
     console.log('[Config] Signaling URL:', resolveSignalingUrl() || 'not configured');
 })();
-

@@ -575,12 +575,48 @@
                             <span class="debug-val" id="dashboard-debug-ice-val">new</span>
                         </div>
                         <div class="debug-item">
+                            <span class="debug-label">ICE Gathering:</span>
+                            <span class="debug-val" id="dashboard-debug-gathering">new</span>
+                        </div>
+                        <div class="debug-item">
                             <span class="debug-label">Stream:</span>
                             <span class="debug-val" id="dashboard-debug-stream">Awaiting stream</span>
                         </div>
                         <div class="debug-item">
                             <span class="debug-label">Pairing State:</span>
                             <span class="debug-val" id="debug-pairing-state">IDLE</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">TURN Relay:</span>
+                            <span class="debug-val" id="dashboard-debug-turn">Loading...</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Network Quality:</span>
+                            <span class="debug-val" id="dashboard-debug-quality">Waiting</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Video Bitrate:</span>
+                            <span class="debug-val" id="dashboard-debug-bitrate">--</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Packet Loss:</span>
+                            <span class="debug-val" id="dashboard-debug-loss">--</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Jitter:</span>
+                            <span class="debug-val" id="dashboard-debug-jitter">--</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">RTT:</span>
+                            <span class="debug-val" id="dashboard-debug-rtt">--</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Frames Dropped:</span>
+                            <span class="debug-val" id="dashboard-debug-dropped">--</span>
+                        </div>
+                        <div class="debug-item">
+                            <span class="debug-label">Outgoing Capacity:</span>
+                            <span class="debug-val" id="dashboard-debug-available">--</span>
                         </div>
                     </div>
                 </details>
@@ -626,6 +662,28 @@
         let isNegotiating = false;
         let awaitingOffer = true;
         let streamConfirmed = false;
+        let rtcConfigurationExpiresAt = 0;
+        let recoveryTimeout = null;
+        let statsInterval = null;
+        let previousVideoBytes = null;
+        let previousVideoTimestamp = null;
+
+        async function loadRtcConfiguration(forceRefresh = false) {
+            if (!window.WomenSafetyConfig) return;
+            if (!forceRefresh && rtcConfigurationExpiresAt > Date.now() + 60000) return;
+            const configuration = await window.WomenSafetyConfig.getIceConfiguration();
+            RTC_CONFIG.iceServers = configuration.iceServers;
+            rtcConfigurationExpiresAt = configuration.expiresAt
+                ? configuration.expiresAt * 1000
+                : Date.now() + 30000;
+            const turnStatus = $('dashboard-debug-turn');
+            if (turnStatus) turnStatus.textContent = configuration.turnConfigured
+                ? 'Configured (short-lived credentials)'
+                : 'Unavailable (STUN only)';
+            if (!configuration.turnConfigured) {
+                console.warn('[ICE] TURN relay is not configured or unavailable; restrictive NATs may prevent connection');
+            }
+        }
 
         // ====================================================================
         // DOM REFS
@@ -655,6 +713,14 @@
         const elDebugIce       = $('dashboard-debug-ice-val');
         const elDebugStream    = $('dashboard-debug-stream');
         const elDebugPairing   = $('debug-pairing-state');
+        const elDebugTurn      = $('dashboard-debug-turn');
+        const elDebugQuality   = $('dashboard-debug-quality');
+        const elDebugBitrate   = $('dashboard-debug-bitrate');
+        const elDebugLoss      = $('dashboard-debug-loss');
+        const elDebugJitter    = $('dashboard-debug-jitter');
+        const elDebugRtt       = $('dashboard-debug-rtt');
+        const elDebugDropped   = $('dashboard-debug-dropped');
+        const elDebugAvailable = $('dashboard-debug-available');
 
         // ====================================================================
         // PANEL MANAGEMENT
@@ -748,8 +814,10 @@
 
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate && pairingClient) {
-                    pairingClient.sendIceCandidate(event.candidate);
+                    pairingClient.sendIceCandidate(event.candidate.toJSON ? event.candidate.toJSON() : event.candidate);
                     console.log('[ICE] Dashboard candidate sent to phone');
+                } else if (!event.candidate && pairingClient) {
+                    pairingClient.sendIceCandidate(null);
                 }
             };
 
@@ -757,12 +825,27 @@
                 const state = peerConnection ? peerConnection.connectionState : 'closed';
                 console.log(`[WebRTC] Connection state = ${state}`);
                 updateWebRTCUI(state);
+                if (state === 'connected') {
+                    clearTimeout(recoveryTimeout);
+                    recoveryTimeout = null;
+                    startReceiverStats();
+                } else if (state === 'failed' || state === 'disconnected') {
+                    scheduleOfferRecovery();
+                }
             };
 
             peerConnection.oniceconnectionstatechange = () => {
                 const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
                 console.log(`[WebRTC] ICE state = ${iceState}`);
                 if (elDebugIce) elDebugIce.textContent = iceState;
+                if (iceState === 'failed' || iceState === 'disconnected') scheduleOfferRecovery();
+            };
+
+            peerConnection.onicegatheringstatechange = () => {
+                const gatheringState = peerConnection ? peerConnection.iceGatheringState : 'closed';
+                console.log(`[ICE] Gathering state = ${gatheringState}`);
+                const gatheringStatus = $('dashboard-debug-gathering');
+                if (gatheringStatus) gatheringStatus.textContent = gatheringState;
             };
 
             peerConnection.onsignalingstatechange = () => {
@@ -776,6 +859,74 @@
             };
 
             return peerConnection;
+        }
+
+        function scheduleOfferRecovery() {
+            if (recoveryTimeout || !pairingClient || !pairingClient.isPaired()) return;
+            recoveryTimeout = setTimeout(() => {
+                recoveryTimeout = null;
+                if (peerConnection &&
+                        (peerConnection.connectionState === 'failed' ||
+                         peerConnection.connectionState === 'disconnected' ||
+                         peerConnection.iceConnectionState === 'failed' ||
+                         peerConnection.iceConnectionState === 'disconnected') &&
+                        pairingClient && pairingClient.isPaired()) {
+                    console.info('[WebRTC] Requesting ICE restart after connection loss');
+                    pairingClient.requestOffer();
+                }
+            }, 3000);
+        }
+
+        function startReceiverStats() {
+            if (statsInterval) clearInterval(statsInterval);
+            previousVideoBytes = null;
+            previousVideoTimestamp = null;
+            statsInterval = setInterval(collectReceiverStats, 2000);
+            collectReceiverStats();
+        }
+
+        async function collectReceiverStats() {
+            if (!peerConnection || peerConnection.connectionState !== 'connected') return;
+            try {
+                const stats = await peerConnection.getStats();
+                let inboundVideo = null;
+                let selectedPair = null;
+                stats.forEach(report => {
+                    if (report.type === 'inbound-rtp' && (report.kind === 'video' || report.mediaType === 'video')) inboundVideo = report;
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded' && (report.nominated || report.selected)) selectedPair = report;
+                });
+                if (!inboundVideo) return;
+
+                const timestamp = inboundVideo.timestamp;
+                const bytes = inboundVideo.bytesReceived;
+                let bitrate = null;
+                if (bytes != null && previousVideoBytes != null && timestamp > previousVideoTimestamp) {
+                    bitrate = Math.round(((bytes - previousVideoBytes) * 8 * 1000) / (timestamp - previousVideoTimestamp));
+                }
+                if (bytes != null) {
+                    previousVideoBytes = bytes;
+                    previousVideoTimestamp = timestamp;
+                }
+                const received = inboundVideo.packetsReceived || 0;
+                const lost = inboundVideo.packetsLost || 0;
+                const lossPercent = received + lost ? (lost / (received + lost)) * 100 : 0;
+                const jitterMs = (inboundVideo.jitter || 0) * 1000;
+                const rttMs = ((selectedPair && selectedPair.currentRoundTripTime) || 0) * 1000;
+                const available = selectedPair && selectedPair.availableOutgoingBitrate;
+                const dropped = inboundVideo.framesDropped || 0;
+                const quality = lossPercent >= 5 || jitterMs >= 50 || rttMs >= 500
+                    ? 'Poor' : lossPercent >= 2 || jitterMs >= 30 || rttMs >= 250 ? 'Fair' : 'Good';
+                if (elDebugQuality) elDebugQuality.textContent = quality;
+                if (elDebugBitrate) elDebugBitrate.textContent = bitrate == null ? 'Measuring...' : `${(bitrate / 1000000).toFixed(2)} Mbps`;
+                if (elDebugLoss) elDebugLoss.textContent = `${lossPercent.toFixed(1)}%`;
+                if (elDebugJitter) elDebugJitter.textContent = `${jitterMs.toFixed(0)} ms`;
+                if (elDebugRtt) elDebugRtt.textContent = rttMs ? `${rttMs.toFixed(0)} ms` : '—';
+                if (elDebugDropped) elDebugDropped.textContent = String(dropped);
+                if (elDebugAvailable) elDebugAvailable.textContent = available
+                    ? `${(available / 1000000).toFixed(2)} Mbps` : 'Not reported';
+            } catch (error) {
+                console.warn('[WebRTC] Could not collect receiver network statistics:', error.message);
+            }
         }
 
         async function handleOfferFromPhone(offer, fromDeviceId) {
@@ -797,6 +948,7 @@
 
             isNegotiating = true;
             try {
+                await loadRtcConfiguration(true);
                 updateWebRTCUI('connecting');
                 if (peerConnection && peerConnection.signalingState !== 'stable') {
                     console.warn('[WebRTC] Ignoring OFFER while negotiation is already active');
@@ -825,17 +977,19 @@
         }
 
         async function addIceCandidateSafely(candidate) {
-            if (!candidate) return;
             if (awaitingOffer || !peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
+                if (pendingIceCandidates.length >= 128) {
+                    console.error('[ICE] Candidate queue limit reached before remote description');
+                    return;
+                }
                 pendingIceCandidates.push(candidate);
                 return;
             }
             try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                await peerConnection.addIceCandidate(candidate ? new RTCIceCandidate(candidate) : null);
                 console.log('[ICE] Candidate applied');
             } catch (err) {
                 console.warn('[WebRTC] Failed to add ICE candidate:', err);
-                pendingIceCandidates.push(candidate);
             }
         }
 
@@ -845,7 +999,7 @@
             while (pendingIceCandidates.length > 0) {
                 const c = pendingIceCandidates.shift();
                 try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+                    await peerConnection.addIceCandidate(c ? new RTCIceCandidate(c) : null);
                 } catch (err) {
                     console.warn('[ICE] Failed to apply queued candidate:', err);
                 }
@@ -898,11 +1052,18 @@
         }
 
         function closePeerConnection(clearPendingQueue = true) {
+            clearTimeout(recoveryTimeout);
+            recoveryTimeout = null;
+            if (statsInterval) clearInterval(statsInterval);
+            statsInterval = null;
+            previousVideoBytes = null;
+            previousVideoTimestamp = null;
             if (peerConnection) {
                 peerConnection.ontrack = null;
                 peerConnection.onicecandidate = null;
                 peerConnection.onconnectionstatechange = null;
                 peerConnection.oniceconnectionstatechange = null;
+                peerConnection.onicegatheringstatechange = null;
                 try { peerConnection.close(); } catch(e) {}
                 peerConnection = null;
                 console.log('[WebRTC] PeerConnection closed');

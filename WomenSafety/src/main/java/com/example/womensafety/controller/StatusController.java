@@ -1,5 +1,6 @@
 package com.example.womensafety.controller;
 
+import com.example.womensafety.config.TurnCredentialService;
 import com.example.womensafety.model.PairingSession;
 import com.example.womensafety.websocket.PairingManager;
 import com.example.womensafety.websocket.SessionManager;
@@ -23,10 +24,22 @@ public class StatusController {
 
     private final SessionManager sessionManager;
     private final PairingManager pairingManager;
+    private final TurnCredentialService turnCredentialService;
 
-    public StatusController(SessionManager sessionManager, PairingManager pairingManager) {
+    public StatusController(
+            SessionManager sessionManager,
+            PairingManager pairingManager,
+            TurnCredentialService turnCredentialService) {
         this.sessionManager = sessionManager;
         this.pairingManager = pairingManager;
+        this.turnCredentialService = turnCredentialService;
+    }
+
+    @GetMapping("/ice-servers")
+    public ResponseEntity<Map<String, Object>> getIceServers() {
+        return ResponseEntity.ok()
+                .header("Cache-Control", "no-store, no-cache, must-revalidate")
+                .body(turnCredentialService.createIceConfiguration());
     }
 
     @GetMapping("/status")

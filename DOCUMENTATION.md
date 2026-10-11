@@ -32,6 +32,18 @@
 
 ---
 
+### Current Streaming Reliability Implementation
+
+The following changes supersede the older STUN-only/1080p-first recommendations and failure-state summaries later in this historical report:
+
+* Both live pages obtain ICE configuration from the Spring Boot `GET /api/ice-servers` endpoint. The backend only returns TURN credentials when `WEBRTC_TURN_URLS` and `WEBRTC_TURN_SHARED_SECRET` are configured; credentials use the Coturn REST shared-secret scheme and expire after `WEBRTC_TURN_CREDENTIAL_TTL_SECONDS`.
+* The active phone and dashboard implementations are inline in `pages/phone.html` and `pages/dashboard.html`; `js/webrtc.js` is a separate legacy module and is kept aligned. The phone begins at 1280×720/30 FPS, lowers bitrate/resolution/frame rate after repeated congestion signals, and restores one quality step after sustained recovery.
+* ICE candidates are trickled over the existing authenticated pairing WebSocket, buffered only until remote SDP is set (maximum 128 ICE entries), and include end-of-candidates. Failed/disconnected links schedule an ICE restart through the existing pairing workflow.
+* Dashboard diagnostics sample inbound WebRTC stats for bitrate, packet loss, jitter, RTT, dropped frames, and available outgoing bitrate when the browser reports it. They do not buffer media on the client.
+* External TURN reachability and end-to-end adaptive behavior cannot be established by unit tests alone. Confirm TURN selection using the browser's selected candidate pair (`relay`) on a real connection; "Configured" means only that the backend issued temporary credentials.
+
+Render deployment variables and sample TURN URL formats are documented in [README.md](./README.md). The TURN provider must support Coturn REST-style shared-secret authentication; standard static long-term credentials are not accepted by this endpoint.
+
 ## 1. PROJECT OVERVIEW
 
 The **Women Safety LIVE WEB TELECASTING SYSTEM** is a dedicated real-time video telecasting platform designed to stream live mobile camera video directly to a remote laptop monitoring console with minimal latency.
@@ -91,7 +103,7 @@ LAPTOP DASHBOARD
 | **Signaling Protocol**| WebSocket | RFC 6455 (`/ws`) | Exchange of SDP and ICE metadata |
 | **Real-Time Video** | WebRTC | W3C Standard (`RTCPeerConnection`)| Peer-to-peer encrypted low-latency video streaming |
 | **Tunnel / Ingress** | Cloudflare Quick Tunnel | `cloudflared` | Secure public HTTPS/WSS tunnel to local backend |
-| **NAT Traversal** | Google STUN | `stun:stun.l.google.com:19302` | Discovers public reflexive IP and UDP ports |
+| **NAT Traversal** | STUN + authenticated TURN REST credentials | Google STUN plus deployment-configured `turn:` / `turns:` URLs | Discovers reflexive candidates and relays when direct paths are unavailable |
 | **Local Backend URL**| HTTP / WS | `http://localhost:8080` | Local development host |
 | **WebSocket Path** | WebSocket Endpoint | `/ws` | Dedicated signaling endpoint |
 

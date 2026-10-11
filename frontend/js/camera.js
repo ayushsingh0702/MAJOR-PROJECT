@@ -3,7 +3,7 @@
  * 
  * Phone Camera Capture & Hardware Stream Management.
  * - Handles camera permissions and error messaging
- * - Requests rear/environment camera with 1080p @ 30fps and 720p fallback
+ * - Requests rear/environment camera with 720p @ 30fps and a lower-resolution fallback
  * - Displays local camera preview
  * - Tracks actual hardware resolution & FPS
  * - Coordinates with webrtc.js for live WebRTC streaming
@@ -84,27 +84,27 @@
         }
 
         /**
-         * Acquire camera stream with 1080p -> 720p adaptive fallback
+         * Acquire the baseline 720p stream used by the adaptive WebRTC sender.
          */
         async function acquireCameraStream() {
-            // Target constraints: 1080p @ 30 FPS rear camera
+            // Prefer 720p @ 30 FPS to avoid starting with an unnecessarily high uplink load.
             const primaryConstraints = {
-                video: {
-                    facingMode: { ideal: "environment" },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    frameRate: { ideal: 30, max: 30 }
-                },
-                audio: false
-            };
-
-            // Fallback 1: 720p @ 30 FPS rear camera
-            const fallback720pConstraints = {
                 video: {
                     facingMode: { ideal: "environment" },
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
                     frameRate: { ideal: 30, max: 30 }
+                },
+                audio: false
+            };
+
+            // Fallback for cameras unable to provide 720p.
+            const fallbackLowerResolutionConstraints = {
+                video: {
+                    facingMode: { ideal: "environment" },
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 24, max: 24 }
                 },
                 audio: false
             };
@@ -118,9 +118,9 @@
             try {
                 return await navigator.mediaDevices.getUserMedia(primaryConstraints);
             } catch (err1) {
-                console.warn('[Camera] 1080p constraints could not be satisfied, attempting 720p fallback:', err1.name);
+                console.warn('[Camera] 720p constraints could not be satisfied, attempting lower-resolution fallback:', err1.name);
                 try {
-                    return await navigator.mediaDevices.getUserMedia(fallback720pConstraints);
+                    return await navigator.mediaDevices.getUserMedia(fallbackLowerResolutionConstraints);
                 } catch (err2) {
                     console.warn('[Camera] 720p constraints failed, attempting generic video fallback:', err2.name);
                     return await navigator.mediaDevices.getUserMedia(standardConstraints);

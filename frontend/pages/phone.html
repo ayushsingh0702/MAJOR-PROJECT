@@ -576,6 +576,11 @@
                 ? window.WomenSafetyConfig.getStunServers()
                 : [{ urls: 'stun:stun.l.google.com:19302' }]
         };
+        const QUALITY_LEVELS = [
+            { width: 1280, height: 720, frameRate: 30, bitrate: 2500000 },
+            { width: 640, height: 360, frameRate: 24, bitrate: 1200000 },
+            { width: 480, height: 270, frameRate: 15, bitrate: 650000 }
+        ];
 
         // State
         let pairingClient = null;
@@ -584,6 +589,14 @@
         let pendingIceCandidates = [];
         let isNegotiating = false;
         let isStreaming = false;
+        let recoveryTimeout = null;
+        let adaptationInterval = null;
+        let qualityLevel = 0;
+        let poorNetworkSamples = 0;
+        let healthyNetworkSamples = 0;
+        let lastOutboundBytes = null;
+        let lastOutboundTimestamp = null;
+        let rtcConfigurationExpiresAt = 0;
 
         // DOM
         const $ = id => document.getElementById(id);
@@ -638,6 +651,20 @@
         function updateDebug(field, val) {
             const el = $(field);
             if (el) el.textContent = val;
+        }
+
+        async function loadRtcConfiguration(forceRefresh = false) {
+            if (!window.WomenSafetyConfig) return;
+            if (!forceRefresh && rtcConfigurationExpiresAt > Date.now() + 60000) return;
+            const configuration = await window.WomenSafetyConfig.getIceConfiguration();
+            RTC_CONFIG.iceServers = configuration.iceServers;
+            rtcConfigurationExpiresAt = configuration.expiresAt
+                ? configuration.expiresAt * 1000
+                : Date.now() + 30000;
+            updateDebug('debugICE', configuration.turnConfigured ? 'TURN ready' : 'STUN only');
+            if (!configuration.turnConfigured) {
+                console.warn('[ICE] TURN relay is not configured or unavailable; restrictive NATs may prevent connection');
+            }
         }
 
         // ====================================================================
@@ -761,7 +788,7 @@
             pairingClient.onRequestOffer = () => {
                 console.log('[WebRTC] Dashboard requested fresh offer');
                 if (localStream && isStreaming) {
-                    initiateOffer();
+                    initiateOffer(true);
                 }
             };
 
@@ -795,18 +822,18 @@
             const primaryConstraints = {
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
                     frameRate: { ideal: 30, max: 30 }
                 },
                 audio: false
             };
-            const fallback720 = {
+            const fallback480 = {
                 video: {
                     facingMode: { ideal: 'environment' },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30, max: 30 }
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 24, max: 24 }
                 },
                 audio: false
             };
@@ -818,9 +845,9 @@
             try {
                 return await navigator.mediaDevices.getUserMedia(primaryConstraints);
             } catch (e1) {
-                console.warn('[Camera] 1080p failed, trying 720p:', e1.name);
+                console.warn('[Camera] 720p constraints failed, trying lower-resolution fallback:', e1.name);
                 try {
-                    return await navigator.mediaDevices.getUserMedia(fallback720);
+                    return await navigator.mediaDevices.getUserMedia(fallback480);
                 } catch (e2) {
                     console.warn('[Camera] 720p failed, trying standard:', e2.name);
                     return await navigator.mediaDevices.getUserMedia(standard);
@@ -845,8 +872,12 @@
             }
 
             try {
+                await loadRtcConfiguration();
                 const stream = await acquireCameraStream();
                 localStream = stream;
+                qualityLevel = 0;
+                poorNetworkSamples = 0;
+                healthyNetworkSamples = 0;
 
                 // Show camera preview
                 const preview = $('cameraPreview');
@@ -959,10 +990,11 @@
 
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate && pairingClient) {
-                    pairingClient.sendIceCandidate(event.candidate);
+                    pairingClient.sendIceCandidate(event.candidate.toJSON ? event.candidate.toJSON() : event.candidate);
                     console.log('[ICE] Candidate sent to dashboard');
                 } else if (!event.candidate) {
                     console.log('[ICE] Gathering complete');
+                    if (pairingClient) pairingClient.sendIceCandidate(null);
                 }
             };
 
@@ -972,13 +1004,16 @@
                 updateDebug('debugWebRTC', 'Connection: ' + state);
 
                 if (state === 'connected') {
+                    clearTimeout(recoveryTimeout);
                     setConnectionStatus('● WebRTC Connected', 'status-connected');
                     $('ph-stream-status').textContent = 'Connected; waiting for dashboard video confirmation';
                 } else if (state === 'failed') {
                     console.warn('[WebRTC] Connection failed');
                     setConnectionStatus('Connection Failed', 'badge-disconnected');
+                    scheduleIceRecovery();
                 } else if (state === 'disconnected') {
                     setConnectionStatus('Connection Lost', 'status-waiting');
+                    scheduleIceRecovery();
                 }
             };
 
@@ -986,12 +1021,30 @@
                 const iceState = peerConnection ? peerConnection.iceConnectionState : 'closed';
                 console.log(`[WebRTC] ICE state = ${iceState}`);
                 updateDebug('debugICE', iceState);
+                if (iceState === 'failed') scheduleIceRecovery();
+            };
+
+            peerConnection.onicegatheringstatechange = () => {
+                console.log(`[ICE] Gathering state = ${peerConnection ? peerConnection.iceGatheringState : 'closed'}`);
             };
 
             return peerConnection;
         }
 
-        async function initiateOffer() {
+        function scheduleIceRecovery() {
+            if (recoveryTimeout || !isStreaming) return;
+            recoveryTimeout = setTimeout(() => {
+                recoveryTimeout = null;
+                if (isStreaming && peerConnection &&
+                        (peerConnection.iceConnectionState === 'failed' ||
+                         peerConnection.connectionState === 'failed' ||
+                         peerConnection.connectionState === 'disconnected')) {
+                    initiateOffer(true);
+                }
+            }, 3000);
+        }
+
+        async function initiateOffer(iceRestart = false) {
             if (!localStream) {
                 console.warn('[WebRTC] No local stream for offer');
                 return;
@@ -1010,12 +1063,18 @@
 
             isNegotiating = true;
             try {
+                await loadRtcConfiguration(iceRestart);
+                if (iceRestart && peerConnection && peerConnection.setConfiguration) {
+                    peerConnection.setConfiguration(RTC_CONFIG);
+                }
                 if (peerConnection && peerConnection.signalingState !== 'stable') {
                     console.warn('[WebRTC] Offer already in progress; ignoring duplicate request');
                     return;
                 }
-                if (!peerConnection || peerConnection.connectionState === 'closed') {
+                if (!peerConnection || peerConnection.connectionState === 'closed' ||
+                        peerConnection.connectionState === 'failed') {
                     createPeerConnection();
+                    iceRestart = false;
                 }
 
                 // Add video track
@@ -1033,13 +1092,14 @@
                 }
 
                 console.log('[WebRTC] Creating offer');
-                const offer = await peerConnection.createOffer();
+                const offer = await peerConnection.createOffer(iceRestart ? { iceRestart: true } : undefined);
                 await peerConnection.setLocalDescription(offer);
                 console.log('[WebRTC] Local description set, sending offer');
 
                 if (!pairingClient.sendOffer(offer)) {
                     throw new Error('Unable to send the WebRTC offer over signaling');
                 }
+                startAdaptiveStreaming();
 
             } catch (err) {
                 console.error('[WebRTC] Offer error:', err);
@@ -1049,34 +1109,112 @@
             }
         }
 
-        async function configureSenderParams(pc, videoTrack) {
+        async function configureSenderParams(pc, videoTrack, levelIndex = qualityLevel) {
             try {
                 const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (!sender || !sender.getParameters) return;
+                if (!sender || !sender.getParameters || !sender.setParameters) return;
                 const params = sender.getParameters();
                 if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-                const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-                const h = settings.height || 720;
-                params.encodings[0].maxBitrate = h >= 1080 ? 4500000 : (h >= 720 ? 2500000 : 1200000);
-                params.encodings[0].maxFramerate = 30;
+                const level = QUALITY_LEVELS[levelIndex];
+                params.encodings[0].maxBitrate = level.bitrate;
+                params.encodings[0].maxFramerate = level.frameRate;
+                if ('degradationPreference' in params) params.degradationPreference = 'balanced';
                 await sender.setParameters(params);
-                console.log('[WebRTC] Sender params configured');
+                if (videoTrack.applyConstraints) {
+                    await videoTrack.applyConstraints({
+                        width: { ideal: level.width, max: level.width },
+                        height: { ideal: level.height, max: level.height },
+                        frameRate: { ideal: level.frameRate, max: level.frameRate }
+                    });
+                }
+                const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+                if (settings.width && settings.height) $('cameraResolutionDisplay').textContent = `${settings.width} × ${settings.height}`;
+                if (settings.frameRate) $('cameraFpsDisplay').textContent = `${Math.round(settings.frameRate)} FPS`;
+                $('cameraQualityDisplay').textContent = levelIndex === 0 ? 'Good' : 'Adaptive';
+                console.info(`[WebRTC] Adaptive quality set to ${level.width}x${level.height} @ ${level.frameRate}fps, ${Math.round(level.bitrate / 1000)}kbps`);
             } catch (e) {
-                console.warn('[WebRTC] Sender params (non-critical):', e.message);
+                console.warn('[WebRTC] Could not apply the requested adaptive quality level:', e.message);
             }
         }
 
+        async function sampleSenderStats() {
+            if (!peerConnection || peerConnection.connectionState === 'closed' || !localStream) return;
+            const sender = peerConnection.getSenders().find(item => item.track && item.track.kind === 'video');
+            if (!sender) return;
+            try {
+                const stats = await peerConnection.getStats();
+                let outbound = null;
+                let remoteInbound = null;
+                let selectedPair = null;
+                stats.forEach(report => {
+                    if (report.type === 'outbound-rtp' && (report.kind === 'video' || report.mediaType === 'video')) outbound = report;
+                    if (report.type === 'remote-inbound-rtp' && (report.kind === 'video' || report.mediaType === 'video')) remoteInbound = report;
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded' && (report.nominated || report.selected)) selectedPair = report;
+                });
+                const nowBytes = outbound && outbound.bytesSent;
+                const nowTimestamp = outbound && outbound.timestamp;
+                let bitrate = 0;
+                if (nowBytes != null && lastOutboundBytes != null && nowTimestamp > lastOutboundTimestamp) {
+                    bitrate = Math.round(((nowBytes - lastOutboundBytes) * 8 * 1000) / (nowTimestamp - lastOutboundTimestamp));
+                }
+                if (nowBytes != null) {
+                    lastOutboundBytes = nowBytes;
+                    lastOutboundTimestamp = nowTimestamp;
+                }
+                const available = selectedPair && selectedPair.availableOutgoingBitrate;
+                const packetCount = remoteInbound && (remoteInbound.packetsReceived || 0) + (remoteInbound.packetsLost || 0);
+                const loss = packetCount ? (remoteInbound.packetsLost || 0) / packetCount : 0;
+                const rtt = (selectedPair && selectedPair.currentRoundTripTime) || (remoteInbound && remoteInbound.roundTripTime) || 0;
+                const jitter = (remoteInbound && remoteInbound.jitter) || 0;
+                const congested = Boolean(outbound && outbound.qualityLimitationReason === 'bandwidth') ||
+                    (available != null && available < QUALITY_LEVELS[qualityLevel].bitrate * 0.9) ||
+                    loss > 0.05 || jitter > 0.05 || rtt > 0.5;
+                if (congested) {
+                    poorNetworkSamples++;
+                    healthyNetworkSamples = 0;
+                } else {
+                    healthyNetworkSamples++;
+                    poorNetworkSamples = 0;
+                }
+                if (poorNetworkSamples >= 2 && qualityLevel < QUALITY_LEVELS.length - 1) {
+                    qualityLevel++;
+                    poorNetworkSamples = 0;
+                    await configureSenderParams(peerConnection, sender.track, qualityLevel);
+                } else if (healthyNetworkSamples >= 4 && qualityLevel > 0) {
+                    qualityLevel--;
+                    healthyNetworkSamples = 0;
+                    await configureSenderParams(peerConnection, sender.track, qualityLevel);
+                }
+                console.debug('[WebRTC] Sender network sample', {
+                    bitrate, availableOutgoingBitrate: available, loss, jitter, rtt,
+                    framesDropped: outbound && outbound.framesDropped,
+                    quality: qualityLevel
+                });
+            } catch (error) {
+                console.warn('[WebRTC] Could not collect sender network statistics:', error.message);
+            }
+        }
+
+        function startAdaptiveStreaming() {
+            if (adaptationInterval) clearInterval(adaptationInterval);
+            lastOutboundBytes = null;
+            lastOutboundTimestamp = null;
+            adaptationInterval = setInterval(sampleSenderStats, 5000);
+        }
+
         async function addIceCandidateSafely(candidate) {
-            if (!candidate) return;
             if (!peerConnection || !peerConnection.remoteDescription || !peerConnection.remoteDescription.type) {
+                if (pendingIceCandidates.length >= 128) {
+                    console.error('[ICE] Candidate queue limit reached before remote description');
+                    return;
+                }
                 pendingIceCandidates.push(candidate);
                 return;
             }
             try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                await peerConnection.addIceCandidate(candidate ? new RTCIceCandidate(candidate) : null);
             } catch (e) {
                 console.warn('[WebRTC] ICE candidate error:', e);
-                pendingIceCandidates.push(candidate);
             }
         }
 
@@ -1084,12 +1222,18 @@
             if (!peerConnection || !peerConnection.remoteDescription) return;
             while (pendingIceCandidates.length > 0) {
                 const c = pendingIceCandidates.shift();
-                try { await peerConnection.addIceCandidate(new RTCIceCandidate(c)); }
+                try { await peerConnection.addIceCandidate(c ? new RTCIceCandidate(c) : null); }
                 catch (e) { console.warn('[ICE] Queued candidate error:', e); }
             }
         }
 
         function closePeerConnection() {
+            clearTimeout(recoveryTimeout);
+            recoveryTimeout = null;
+            if (adaptationInterval) clearInterval(adaptationInterval);
+            adaptationInterval = null;
+            lastOutboundBytes = null;
+            lastOutboundTimestamp = null;
             if (peerConnection) {
                 peerConnection.ontrack = null;
                 peerConnection.onicecandidate = null;
