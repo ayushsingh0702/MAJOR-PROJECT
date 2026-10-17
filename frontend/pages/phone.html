@@ -1091,6 +1091,9 @@
                     }
                 }
 
+                // Create WebRTC DataChannel for Real-Time Location Telemetry
+                createTelemetryDataChannel();
+
                 console.log('[WebRTC] Creating offer');
                 const offer = await peerConnection.createOffer(iceRestart ? { iceRestart: true } : undefined);
                 await peerConnection.setLocalDescription(offer);
@@ -1245,6 +1248,80 @@
             }
             pendingIceCandidates = [];
             isNegotiating = false;
+            stopLocationTracking();
+            if (telemetryDataChannel) {
+                try { telemetryDataChannel.close(); } catch (e) {}
+                telemetryDataChannel = null;
+            }
+        }
+
+        // ====================================================================
+        // REAL-TIME GPS TELEMETRY
+        // ====================================================================
+        let telemetryDataChannel = null;
+        let locationWatchId = null;
+
+        function createTelemetryDataChannel() {
+            if (!peerConnection) return;
+            try {
+                telemetryDataChannel = peerConnection.createDataChannel('telemetry', { ordered: false, maxRetransmits: 0 });
+                telemetryDataChannel.onopen = () => {
+                    console.log('[WebRTC Telemetry] DataChannel opened, starting live GPS tracking');
+                    startLocationTracking();
+                };
+                telemetryDataChannel.onclose = () => {
+                    console.log('[WebRTC Telemetry] DataChannel closed');
+                    stopLocationTracking();
+                };
+            } catch (e) {
+                console.warn('[WebRTC Telemetry] Could not create telemetry DataChannel:', e.message);
+            }
+        }
+
+        function startLocationTracking() {
+            if (locationWatchId) return;
+            if (!navigator.geolocation) {
+                console.warn('[GPS] Geolocation is not supported by this browser.');
+                sendTelemetryPayload({ type: 'LOCATION', error: 'Geolocation not supported' });
+                return;
+            }
+
+            console.log('[GPS] Requesting live mobile geolocation...');
+            locationWatchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const coords = {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                        speed: pos.coords.speed,
+                        timestamp: pos.timestamp
+                    };
+                    sendTelemetryPayload({ type: 'LOCATION', data: coords });
+                },
+                (err) => {
+                    console.warn('[GPS] Geolocation error:', err.message);
+                    sendTelemetryPayload({ type: 'LOCATION', error: err.message });
+                },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            );
+        }
+
+        function stopLocationTracking() {
+            if (locationWatchId !== null) {
+                navigator.geolocation.clearWatch(locationWatchId);
+                locationWatchId = null;
+                console.log('[GPS] Stopped geolocation tracking');
+            }
+        }
+
+        function sendTelemetryPayload(obj) {
+            if (telemetryDataChannel && telemetryDataChannel.readyState === 'open') {
+                try {
+                    telemetryDataChannel.send(JSON.stringify(obj));
+                } catch (e) {
+                    console.warn('[WebRTC Telemetry] Send error:', e.message);
+                }
+            }
         }
 
         // ====================================================================

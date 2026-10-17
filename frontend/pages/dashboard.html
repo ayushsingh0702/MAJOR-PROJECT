@@ -551,6 +551,7 @@
                     <div class="stream-stats">
                         <div class="stat-item"><span>Device:</span> <strong id="stat-device">—</strong></div>
                         <div class="stat-item"><span>Resolution:</span> <strong id="stat-resolution">--</strong></div>
+                        <div class="stat-item"><span>Location:</span> <strong id="stat-location" style="color: #4fc3f7;">Awaiting GPS...</strong></div>
                         <div class="stat-item"><span>Status:</span> <strong id="dashboard-debug-webrtc">Waiting</strong></div>
                         <div class="stat-item"><span>Connection:</span> <strong id="dashboard-debug-conn">Ready</strong></div>
                     </div>
@@ -669,6 +670,26 @@
                         <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Confidence & Latency</div>
                             <div id="ai-confidence-latency" style="font-size: 0.85rem; font-weight: 600; margin-top: 4px;">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Real-Time Harassment Percentage Threat Meter -->
+                    <div style="background: rgba(255,255,255,0.03); padding: 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+                            <span style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #bbb;">
+                                Real-Time Harassment Threat Level
+                            </span>
+                            <span id="ai-threat-percentage" style="font-size: 1.5rem; font-weight: 800; color: #81c784;">
+                                0.0%
+                            </span>
+                        </div>
+                        <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden;">
+                            <div id="ai-threat-bar" style="width: 0%; height: 100%; background: #81c784; transition: width 0.4s ease, background-color 0.4s ease;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #777; margin-top: 4px;">
+                            <span>Safe (0%)</span>
+                            <span>Suspicious (50%)</span>
+                            <span>Critical Threat (100%)</span>
                         </div>
                     </div>
 
@@ -938,7 +959,41 @@
                 handleRemoteStream(stream);
             };
 
+            // Listen for Telemetry DataChannel (Real-time GPS Location)
+            peerConnection.ondatachannel = (event) => {
+                const channel = event.channel;
+                if (channel.label === 'telemetry') {
+                    console.log('[WebRTC Telemetry] Telemetry channel received from phone');
+                    channel.onmessage = (msgEvent) => {
+                        try {
+                            const payload = JSON.parse(msgEvent.data);
+                            if (payload.type === 'LOCATION') {
+                                handleIncomingLocation(payload);
+                            }
+                        } catch (e) {
+                            console.warn('[WebRTC Telemetry] Malformed packet:', e);
+                        }
+                    };
+                }
+            };
+
             return peerConnection;
+        }
+
+        function handleIncomingLocation(payload) {
+            const elLocation = $('stat-location');
+            if (!elLocation) return;
+            if (payload.error) {
+                elLocation.innerHTML = `<span style="color: #ffb74d;">GPS: ${payload.error}</span>`;
+                return;
+            }
+            if (payload.data && payload.data.latitude && payload.data.longitude) {
+                const lat = payload.data.latitude.toFixed(5);
+                const lng = payload.data.longitude.toFixed(5);
+                const acc = Math.round(payload.data.accuracy || 0);
+                const mapsUrl = `https://www.google.com/maps?q=${payload.data.latitude},${payload.data.longitude}`;
+                elLocation.innerHTML = `<a href="${mapsUrl}" target="_blank" style="color: #4fc3f7; text-decoration: underline;" title="Accuracy: ±${acc}m (Click to view Map)">${lat}, ${lng} (±${acc}m)</a>`;
+            }
         }
 
         function scheduleOfferRecovery() {
@@ -1559,6 +1614,27 @@
                     }
                     scoreHtml += '</div>';
                     aiScoresContainer.innerHTML = scoreHtml;
+
+                    // Real-Time Harassment Percentage Calculation
+                    const harassmentProbability = result.class_scores['LABEL_1'] !== undefined 
+                        ? result.class_scores['LABEL_1'] 
+                        : (result.class_scores['harassment'] || result.confidence || 0);
+                    const percentVal = (harassmentProbability * 100).toFixed(1);
+
+                    const elPercentage = $('ai-threat-percentage');
+                    const elBar = $('ai-threat-bar');
+                    if (elPercentage) {
+                        elPercentage.textContent = `${percentVal}%`;
+                        if (percentVal >= 75) elPercentage.style.color = '#ff1744';
+                        else if (percentVal >= 45) elPercentage.style.color = '#ffa726';
+                        else elPercentage.style.color = '#81c784';
+                    }
+                    if (elBar) {
+                        elBar.style.width = `${percentVal}%`;
+                        if (percentVal >= 75) elBar.style.background = 'linear-gradient(90deg, #ff5252, #d50000)';
+                        else if (percentVal >= 45) elBar.style.background = 'linear-gradient(90deg, #ffb74d, #f57c00)';
+                        else elBar.style.background = 'linear-gradient(90deg, #81c784, #388e3c)';
+                    }
                 }
 
                 if (aiAggregatedAlert) {
