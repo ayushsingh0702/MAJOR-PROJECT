@@ -620,6 +620,85 @@
                         </div>
                     </div>
                 </details>
+
+                <!-- AI Safety Analysis Panel -->
+                <div class="stream-card ai-safety-panel" style="margin-top: 20px; border-top: 2px solid var(--primary, #e91e63);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+                        <div>
+                            <h2 style="font-size: 1.15rem; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path>
+                                    <path d="M12 6v6l4 2"></path>
+                                </svg>
+                                AI Safety & Threat Detection
+                            </h2>
+                            <p style="font-size: 0.8rem; color: var(--text-muted, #888); margin: 4px 0 0 0;">
+                                Local pretrained vision inference on sampled WebRTC video frames.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span id="ai-status-pill" class="badge" style="background: rgba(128,128,128,0.2); color: #aaa; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">
+                                AI: INACTIVE
+                            </span>
+                            <button type="button" class="btn btn-primary" id="btn-start-ai" style="padding: 6px 14px; font-size: 0.85rem;">
+                                Start AI Analysis
+                            </button>
+                            <button type="button" class="btn btn-outline" id="btn-stop-ai" style="padding: 6px 14px; font-size: 0.85rem; display: none;">
+                                Stop AI Analysis
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- AI Status & Diagnostics Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Service Endpoint</div>
+                                <a href="javascript:void(0)" id="btn-change-ai-endpoint" style="font-size: 0.75rem; color: var(--primary, #e91e63); text-decoration: none;">Change</a>
+                            </div>
+                            <div id="ai-endpoint-display" style="font-size: 0.85rem; font-weight: 600; margin-top: 4px; word-break: break-all;">http://127.0.0.1:8000</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
+                            <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Harassment Model</div>
+                            <div id="ai-model-status" style="font-size: 0.85rem; font-weight: 600; margin-top: 4px; color: #ffa726;">Checking...</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
+                            <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Latest Prediction</div>
+                            <div id="ai-latest-prediction" style="font-size: 0.95rem; font-weight: 700; margin-top: 4px; color: #aaa;">—</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
+                            <div style="font-size: 0.75rem; color: #888; text-transform: uppercase;">Confidence & Latency</div>
+                            <div id="ai-confidence-latency" style="font-size: 0.85rem; font-weight: 600; margin-top: 4px;">—</div>
+                        </div>
+                    </div>
+
+                    <!-- Scores & Notice -->
+                    <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-size: 0.8rem; font-weight: 600;">Class Probabilities:</span>
+                            <span id="ai-timestamp" style="font-size: 0.75rem; color: #888;">Updated: Never</span>
+                        </div>
+                        <div id="ai-scores-container" style="font-size: 0.85rem; color: #bbb;">
+                            Awaiting frame inference...
+                        </div>
+                        <div id="ai-interpretation-notice" style="margin-top: 8px; font-size: 0.75rem; color: #ffa726; font-style: italic;">
+                            Note: Predictions require human review. Single-frame classification is not proof of harassment.
+                        </div>
+                    </div>
+
+                    <!-- Aggregated Alert Banner -->
+                    <div id="ai-aggregated-alert" style="display: none; padding: 10px 14px; background: rgba(233, 30, 99, 0.15); border: 1px solid #e91e63; border-radius: 8px; color: #ff80ab; font-size: 0.85rem; font-weight: 600; margin-bottom: 12px;">
+                        ⚠️ Persistent elevated classification detected over consecutive frames. Review live video stream immediately.
+                    </div>
+
+                    <!-- Recent Inference History Log -->
+                    <div>
+                        <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: #888;">Recent Inference Timeline (Last 5 frames):</div>
+                        <div id="ai-history-list" style="font-family: monospace; font-size: 0.78rem; color: #aaa; max-height: 120px; overflow-y: auto;">
+                            <div>No inferences recorded yet.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
 
@@ -635,6 +714,7 @@
     <!-- Scripts -->
     <script src="../js/config.js"></script>
     <script src="../js/pairing.js"></script>
+    <script src="../js/ai-client.js"></script>
 
     <script>
     /**
@@ -1040,6 +1120,9 @@
         }
 
         function resetVideoUI(hint) {
+            if (typeof aiClient !== 'undefined' && aiClient && aiClient.active) {
+                aiClient.stop('Remote video stream disconnected');
+            }
             if (elRemoteVideo) {
                 elRemoteVideo.srcObject = null;
                 elRemoteVideo.style.display = 'none';
@@ -1363,6 +1446,160 @@
                 btnMute.addEventListener('click', () => {
                     elRemoteVideo.muted = !elRemoteVideo.muted;
                     btnMute.textContent = elRemoteVideo.muted ? 'Unmute' : 'Mute';
+                });
+            }
+
+            // AI Safety Analysis Controls
+            setupAIControls();
+        }
+
+        // ====================================================================
+        // AI SAFETY CONTROLLER
+        // ====================================================================
+        let aiClient = null;
+
+        function setupAIControls() {
+            if (typeof window.AIAnalysisClient === 'function') {
+                aiClient = new window.AIAnalysisClient();
+            } else {
+                console.warn('[AI] AIAnalysisClient library not loaded.');
+                return;
+            }
+
+            const btnStartAI = $('btn-start-ai');
+            const btnStopAI = $('btn-stop-ai');
+            const aiStatusPill = $('ai-status-pill');
+            const aiEndpointDisplay = $('ai-endpoint-display');
+            const aiModelStatus = $('ai-model-status');
+            const aiLatestPrediction = $('ai-latest-prediction');
+            const aiConfidenceLatency = $('ai-confidence-latency');
+            const aiScoresContainer = $('ai-scores-container');
+            const aiTimestamp = $('ai-timestamp');
+            const aiAggregatedAlert = $('ai-aggregated-alert');
+            const aiHistoryList = $('ai-history-list');
+
+            if (aiEndpointDisplay) {
+                aiEndpointDisplay.textContent = aiClient.getBaseUrl();
+            }
+
+            // Periodically check AI service and model status
+            async function checkAIModelHealth() {
+                try {
+                    const statusData = await aiClient.checkModelStatus();
+                    if (statusData && statusData.harassment_model) {
+                        const m = statusData.harassment_model;
+                        if (aiModelStatus) {
+                            if (m.loaded) {
+                                const verText = m.labels_verified ? 'Verified' : 'Unverified Labels';
+                                aiModelStatus.innerHTML = `<span style="color: #4caf50;">Ready</span> (${verText})`;
+                            } else {
+                                aiModelStatus.innerHTML = `<span style="color: #f44336;">Error: ${m.error || 'Not loaded'}</span>`;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    if (aiModelStatus) {
+                        aiModelStatus.innerHTML = `<span style="color: #e91e63;">Service Offline</span>`;
+                    }
+                }
+            }
+
+            checkAIModelHealth();
+
+            // Status updates
+            aiClient.onStatusChange = (status, reason) => {
+                console.log(`[AI Status] ${status} (${reason})`);
+                if (status === 'RUNNING') {
+                    if (aiStatusPill) {
+                        aiStatusPill.textContent = 'AI: RUNNING';
+                        aiStatusPill.style.background = 'rgba(76, 175, 80, 0.2)';
+                        aiStatusPill.style.color = '#81c784';
+                    }
+                    if (btnStartAI) btnStartAI.style.display = 'none';
+                    if (btnStopAI) btnStopAI.style.display = 'inline-block';
+                } else {
+                    if (aiStatusPill) {
+                        aiStatusPill.textContent = 'AI: INACTIVE';
+                        aiStatusPill.style.background = 'rgba(128,128,128,0.2)';
+                        aiStatusPill.style.color = '#aaa';
+                    }
+                    if (btnStartAI) btnStartAI.style.display = 'inline-block';
+                    if (btnStopAI) btnStopAI.style.display = 'none';
+                    if (aiAggregatedAlert) aiAggregatedAlert.style.display = 'none';
+                }
+            };
+
+            // Error updates
+            aiClient.onError = (errMsg) => {
+                if (aiScoresContainer) {
+                    aiScoresContainer.innerHTML = `<span style="color: #ff80ab;">AI Error: ${errMsg}</span>`;
+                }
+            };
+
+            // Results updates
+            aiClient.onResult = (result, alertState, history) => {
+                if (aiLatestPrediction) {
+                    const isCandidate = (result.prediction === 'LABEL_1' || result.prediction === 'harassment');
+                    aiLatestPrediction.textContent = `${result.prediction} (${(result.confidence * 100).toFixed(1)}%)`;
+                    aiLatestPrediction.style.color = isCandidate ? '#ff80ab' : '#81c784';
+                }
+
+                if (aiConfidenceLatency) {
+                    aiConfidenceLatency.textContent = `Conf: ${(result.confidence * 100).toFixed(1)}% | Latency: ${result.inference_time_ms}ms`;
+                }
+
+                if (aiTimestamp) {
+                    aiTimestamp.textContent = `Updated: ${new Date(result.timestamp).toLocaleTimeString()}`;
+                }
+
+                if (aiScoresContainer && result.class_scores) {
+                    let scoreHtml = '<div style="display: flex; gap: 16px; flex-wrap: wrap;">';
+                    for (const [k, v] of Object.entries(result.class_scores)) {
+                        scoreHtml += `<div><strong>${k}:</strong> ${(v * 100).toFixed(1)}%</div>`;
+                    }
+                    scoreHtml += '</div>';
+                    aiScoresContainer.innerHTML = scoreHtml;
+                }
+
+                if (aiAggregatedAlert) {
+                    aiAggregatedAlert.style.display = alertState.isAggregatedAlert ? 'block' : 'none';
+                }
+
+                if (aiHistoryList && history) {
+                    const items = history.slice(0, 5).map(item => {
+                        const time = new Date(item.timestamp).toLocaleTimeString();
+                        return `<div>[${time}] Pred: <strong>${item.prediction}</strong> (Conf: ${(item.confidence * 100).toFixed(1)}%, ${item.inference_time_ms}ms)</div>`;
+                    });
+                    aiHistoryList.innerHTML = items.join('');
+                }
+            };
+
+            if (btnStartAI) {
+                btnStartAI.addEventListener('click', () => {
+                    if (!elRemoteVideo || !elRemoteVideo.srcObject) {
+                        alert('No active remote video stream. Please connect a mobile device first.');
+                        return;
+                    }
+                    aiClient.start(elRemoteVideo);
+                });
+            }
+
+            if (btnStopAI) {
+                btnStopAI.addEventListener('click', () => {
+                    aiClient.stop('User stopped');
+                });
+            }
+
+            const btnChangeEndpoint = $('btn-change-ai-endpoint');
+            if (btnChangeEndpoint) {
+                btnChangeEndpoint.addEventListener('click', () => {
+                    const currentUrl = aiClient.getBaseUrl();
+                    const newUrl = prompt('Enter AI Inference Microservice URL (e.g., https://your-ai-service.com or https://xyz.trycloudflare.com):', currentUrl);
+                    if (newUrl !== null && newUrl.trim()) {
+                        window.WomenSafetyConfig.setAiServiceUrl(newUrl.trim());
+                        if (aiEndpointDisplay) aiEndpointDisplay.textContent = newUrl.trim();
+                        checkAIModelHealth();
+                    }
                 });
             }
         }

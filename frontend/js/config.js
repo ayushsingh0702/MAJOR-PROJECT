@@ -1,4 +1,4 @@
-﻿/**
+/**
  * config.js
  * 
  * Application Configuration & Signaling URL Resolution.
@@ -18,6 +18,7 @@
         // In production on HTTPS: replace or configure via window.ENV_CONFIG or query param ?ws=wss://...
         DEFAULT_WS_URL: 'wss://major-project-o3g3.onrender.com/ws',
         DEFAULT_SESSION_ID: 'default-session',
+        DEFAULT_AI_SERVICE_URL: 'http://127.0.0.1:8000',
         STUN_SERVERS: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -127,7 +128,27 @@
         getStunServers: function () {
             return DEFAULT_CONFIG.STUN_SERVERS;
         },
-        getIceConfiguration: resolveIceConfiguration
+        getIceConfiguration: resolveIceConfiguration,
+        getAiServiceUrl: function () {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const queryAi = params.get('ai_url') || params.get('ai');
+                if (queryAi) return queryAi.replace(/\/+$/, '');
+            } catch (e) {}
+            const stored = localStorage.getItem('WOMEN_SAFETY_AI_URL');
+            if (stored) return stored.replace(/\/+$/, '');
+            if (window.ENV_CONFIG && window.ENV_CONFIG.AI_SERVICE_URL) {
+                return window.ENV_CONFIG.AI_SERVICE_URL.replace(/\/+$/, '');
+            }
+            return DEFAULT_CONFIG.DEFAULT_AI_SERVICE_URL;
+        },
+        setAiServiceUrl: function (url) {
+            if (url) {
+                localStorage.setItem('WOMEN_SAFETY_AI_URL', url.trim().replace(/\/+$/, ''));
+            } else {
+                localStorage.removeItem('WOMEN_SAFETY_AI_URL');
+            }
+        }
     };
 
     console.log('[Config] Signaling URL:', resolveSignalingUrl() || 'not configured');
